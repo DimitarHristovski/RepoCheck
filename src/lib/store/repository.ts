@@ -292,6 +292,7 @@ export function clearLocalData(scope: "scans" | "folders" | "all"): void {
       s.riskScores = [];
       s.proposedActions = [];
       s.repositories = [];
+      s.auditLogs = [];
     }
     if (scope === "folders" || scope === "all") {
       s.approvedFolders = [];
@@ -309,8 +310,10 @@ export function getDashboardSnapshot(): {
   const s = readStore();
   const recentSessions = sortByCreatedAtDesc(s.scanSessions).slice(0, 10);
   const flagged = sortByCreatedAtDesc(
-    s.findings.filter((f) => f.severity === "high" || f.severity === "critical")
-  ).slice(0, 12);
+    s.findings.filter((f) =>
+      ["critical", "high", "medium"].includes(f.severity)
+    )
+  ).slice(0, 20);
   const riskTrend = sortByCreatedAtDesc(s.riskScores).slice(0, 12);
   return {
     approvedFolderCount: s.approvedFolders.length,
