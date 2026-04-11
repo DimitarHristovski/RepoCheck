@@ -99,6 +99,8 @@ Includes unit tests for scoring and heuristics plus a validation smoke test for 
 
 Prefer `REPOCHECK_*` for model provider, LLM model id, analysis root, and optional `REPOCHECK_STORE_PATH`. The older `FILESENTINEL_*` names are still honored for provider / model / analysis root.
 
+For OpenAI, set **`OPENAI_API_KEY`** or **`API_KEY`** (same effect). If no `REPOCHECK_MODEL_PROVIDER` is set but a key is present, the app defaults the provider to **`openai`**.
+
 ## Privacy model
 
 - Default **provider `none`**: no outbound model calls.

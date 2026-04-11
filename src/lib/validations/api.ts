@@ -10,9 +10,15 @@ export const folderScanSchema = z.object({
   maxDepth: z.number().int().min(1).max(64).optional().default(32),
 });
 
+/** Local by absolute path, or by approved folder + optional path inside it. */
 export const repoScanSchema = z.object({
   source: z.union([
     z.object({ type: z.literal("local"), path: z.string().min(1) }),
+    z.object({
+      type: z.literal("local"),
+      approvedFolderId: z.string().uuid(),
+      relativePath: z.string().optional(),
+    }),
     z.object({
       type: z.literal("url"),
       url: z.string().url(),

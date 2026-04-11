@@ -2,11 +2,20 @@ import { NextResponse } from "next/server";
 import { settingsPatchSchema } from "@/lib/validations/api";
 import { getAppSettings, setAppSettings } from "@/lib/settingsStore";
 import { writeAuditLog } from "@/lib/services/auditLog.service";
+import { getConfig, resolveOpenAiApiKey } from "@/lib/config";
 
 export const runtime = "nodejs";
 
 export function GET() {
-  return NextResponse.json({ settings: getAppSettings() });
+  const cfg = getConfig();
+  return NextResponse.json({
+    settings: getAppSettings(),
+    runtime: {
+      effectiveModelProvider: cfg.REPOCHECK_MODEL_PROVIDER,
+      hasOpenAiKey: Boolean(resolveOpenAiApiKey()),
+      hasOpenAiBaseUrl: Boolean(process.env.OPENAI_BASE_URL),
+    },
+  });
 }
 
 export async function PATCH(req: Request) {
@@ -17,5 +26,13 @@ export async function PATCH(req: Request) {
   }
   const next = setAppSettings(parsed.data);
   writeAuditLog({ actor: "user", action: "settings_update" });
-  return NextResponse.json({ settings: next });
+  const cfg = getConfig();
+  return NextResponse.json({
+    settings: next,
+    runtime: {
+      effectiveModelProvider: cfg.REPOCHECK_MODEL_PROVIDER,
+      hasOpenAiKey: Boolean(resolveOpenAiApiKey()),
+      hasOpenAiBaseUrl: Boolean(process.env.OPENAI_BASE_URL),
+    },
+  });
 }

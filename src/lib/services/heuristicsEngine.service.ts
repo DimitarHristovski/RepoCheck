@@ -22,6 +22,29 @@ const PY_RISK = [
   { re: /\brequests\.(?:get|post)\s*\([^)]*http/i, tag: "http_request" },
 ];
 
+const JS_EXFIL = [
+  {
+    re: /process\.env[\s\S]{0,400}?(?:fetch|axios|http\.request|https\.request)/i,
+    tag: "env_to_network",
+  },
+  {
+    re: /(?:fetch|axios)[\s\S]{0,400}?process\.env/i,
+    tag: "network_env",
+  },
+];
+
+const JS_SENSITIVE_FS = [
+  { re: /readFile(?:Sync)?\s*\([^)]*\/etc\/passwd/i, tag: "read_etc_passwd" },
+  { re: /\.ssh\/id_rsa|\.aws\/credentials/i, tag: "path_in_string" },
+];
+
+const GO_RISK = [{ re: /"os\/exec"|exec\.Command/i, tag: "go_exec" }];
+
+const RB_SH_RISK = [
+  { re: /\`[^\`]{3,400}\`|%x\{[^}]{1,400}\}/, tag: "ruby_shell" },
+  { re: /\bOpen3\.|system\s*\(/i, tag: "ruby_system" },
+];
+
 const WORKFLOW_EXFIL = [
   /secrets?\s*:\s*\[\s*['"][^'"]+['"]\s*\]/i,
   /curl\s+.*github\.com\/repos\/.*\/contents/i,
@@ -75,6 +98,32 @@ export function scanTextContent(
   }
 
   if (/\.(m?js|ts|jsx|tsx|cjs)$/.test(ext) || lower.endsWith("package.json")) {
+    for (const { re, tag } of JS_EXFIL) {
+      if (re.test(content)) {
+        out.push({
+          severity: "high",
+          category: "secret_harvest",
+          title: `JavaScript indicator: ${tag}`,
+          description:
+            "Environment variables or network calls appear close together; could leak secrets to a remote endpoint.",
+          evidence: { tag, path: relPath },
+          filePath: relPath,
+        });
+      }
+    }
+    for (const { re, tag } of JS_SENSITIVE_FS) {
+      if (re.test(content)) {
+        out.push({
+          severity: "high",
+          category: "secret_harvest",
+          title: `JavaScript indicator: ${tag}`,
+          description:
+            "References to sensitive host paths or credential locations in code warrant review.",
+          evidence: { tag, path: relPath },
+          filePath: relPath,
+        });
+      }
+    }
     for (const { re, tag } of JS_RISK) {
       if (re.test(content)) {
         const sev =
@@ -101,6 +150,36 @@ export function scanTextContent(
     }
   }
 
+  if (/\.go$/.test(ext)) {
+    for (const { re, tag } of GO_RISK) {
+      if (re.test(content)) {
+        out.push({
+          severity: "medium",
+          category: "shell_execution",
+          title: `Go indicator: ${tag}`,
+          description: "Process execution from Go can run arbitrary commands; confirm intent.",
+          evidence: { tag, path: relPath },
+          filePath: relPath,
+        });
+      }
+    }
+  }
+
+  if (/\.rb$/.test(ext)) {
+    for (const { re, tag } of RB_SH_RISK) {
+      if (re.test(content)) {
+        out.push({
+          severity: "medium",
+          category: "shell_execution",
+          title: `Ruby indicator: ${tag}`,
+          description: "Backticks or shell helpers can execute system commands.",
+          evidence: { tag, path: relPath },
+          filePath: relPath,
+        });
+      }
+    }
+  }
+
   if (/\.pyw?$/.test(ext)) {
     for (const { re, tag } of PY_RISK) {
       if (re.test(content)) {
@@ -117,7 +196,7 @@ export function scanTextContent(
     }
   }
 
-  if (lower.includes(".github/workflows/") && lower.endsWith(".yml")) {
+  if (/\.github\/workflows\//i.test(lower) && /\.ya?ml$/i.test(lower)) {
     for (const p of WORKFLOW_EXFIL) {
       if (p.test(content)) {
         out.push({
@@ -130,6 +209,17 @@ export function scanTextContent(
           filePath: relPath,
         });
       }
+    }
+    if (/\bcurl\b[^|\n]*\|\s*(?:bash|sh|zsh)\b/i.test(content)) {
+      out.push({
+        severity: "high",
+        category: "workflow_risk",
+        title: "Workflow pipes remote content to shell",
+        description:
+          "GitHub Actions that pipe curl/wget into a shell can execute arbitrary code in CI.",
+        evidence: { path: relPath },
+        filePath: relPath,
+      });
     }
   }
 
@@ -233,6 +323,100 @@ export function fileMetadataHeuristics(input: {
         "Shell scripts living outside typical code directories may warrant review.",
       evidence: { path: input.relativePath, category: input.category },
       filePath: input.relativePath,
+    });
+  }
+
+  out.push(...pathSensitiveHeuristics(input.relativePath));
+
+  return out;
+}
+
+/**
+ * Filename/path-only signals (no file body read). Safe to run on every path in a walk.
+ */
+export function pathSensitiveHeuristics(relativePath: string): HeuristicFinding[] {
+  const norm = relativePath.replace(/\\/g, "/");
+  const lower = norm.toLowerCase();
+  const base = path.basename(lower);
+  const out: HeuristicFinding[] = [];
+
+  if (/(^|\/)\.env($|\.local$|\.production$|\.development$)/i.test(norm)) {
+    out.push({
+      severity: "medium",
+      category: "secret_file",
+      title: "Environment file name",
+      description:
+        "Files named like .env often hold secrets; if committed, they are a common leak vector.",
+      evidence: { path: relativePath },
+      filePath: relativePath,
+    });
+  }
+
+  if (/(^|\/)\.ssh\/(id_rsa|id_ed25519|id_ecdsa)(?:$|\.)/.test(norm)) {
+    out.push({
+      severity: "critical",
+      category: "secret_file",
+      title: "SSH private key path pattern",
+      description:
+        "Filenames matching private keys under .ssh are extremely sensitive; confirm they should exist in this tree.",
+      evidence: { path: relativePath },
+      filePath: relativePath,
+    });
+  }
+
+  if (/(^|\/)\.aws\/credentials$|(^|\/)aws\/credentials$/i.test(norm)) {
+    out.push({
+      severity: "high",
+      category: "secret_file",
+      title: "AWS credentials path pattern",
+      description: "Paths that match AWS credential files warrant verification before sharing or publishing.",
+      evidence: { path: relativePath },
+      filePath: relativePath,
+    });
+  }
+
+  if (/(^|\/)kubeconfig$/i.test(base) || /(^|\/)\.kube\/config$/i.test(norm)) {
+    out.push({
+      severity: "high",
+      category: "secret_file",
+      title: "Kubernetes config filename",
+      description: "Kubeconfig files can embed cluster credentials; review exposure.",
+      evidence: { path: relativePath },
+      filePath: relativePath,
+    });
+  }
+
+  if (/\.(pem|pfx|p12)$/i.test(base)) {
+    out.push({
+      severity: "medium",
+      category: "secret_file",
+      title: "Certificate or PKCS bundle extension",
+      description: "PEM/PFX/P12 files may contain private keys; confirm they belong in this project.",
+      evidence: { path: relativePath },
+      filePath: relativePath,
+    });
+  }
+
+  if (/(^|\/)secrets?\.(json|ya?ml|toml)$/i.test(base)) {
+    out.push({
+      severity: "medium",
+      category: "secret_file",
+      title: "Secrets-named config file",
+      description: "Filenames suggesting stored secrets deserve manual review.",
+      evidence: { path: relativePath },
+      filePath: relativePath,
+    });
+  }
+
+  if (/(^|\/)google-services\.json$/i.test(base) || /(^|\/)GoogleService-Info\.plist$/i.test(base)) {
+    out.push({
+      severity: "low",
+      category: "default",
+      title: "Mobile/cloud client config",
+      description:
+        "Common mobile SDK config files; not inherently malicious but often contain project identifiers.",
+      evidence: { path: relativePath },
+      filePath: relativePath,
     });
   }
 

@@ -3,6 +3,15 @@ import { z } from "zod";
 
 const providerSchema = z.enum(["openai", "ollama", "none"]);
 
+/** Prefer OPENAI_API_KEY; fall back to API_KEY (e.g. .env.local). */
+export function resolveOpenAiApiKey(): string | undefined {
+  const fromOpenAi = process.env.OPENAI_API_KEY?.trim();
+  if (fromOpenAi) return fromOpenAi;
+  const generic = process.env.API_KEY?.trim();
+  if (generic) return generic;
+  return undefined;
+}
+
 const envSchema = z.object({
   REPOCHECK_STORE_PATH: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
@@ -33,10 +42,13 @@ export type AppConfig = Omit<
 function resolveModelProvider(): z.infer<typeof providerSchema> {
   const raw =
     process.env.REPOCHECK_MODEL_PROVIDER ??
-    process.env.FILESENTINEL_MODEL_PROVIDER ??
-    "none";
-  const p = providerSchema.safeParse(raw);
-  return p.success ? p.data : "none";
+    process.env.FILESENTINEL_MODEL_PROVIDER;
+  if (raw != null && String(raw).trim() !== "") {
+    const p = providerSchema.safeParse(String(raw).trim());
+    return p.success ? p.data : "none";
+  }
+  if (resolveOpenAiApiKey()) return "openai";
+  return "none";
 }
 
 function resolveLlmModel(): string {
@@ -64,8 +76,10 @@ export function loadConfig(): AppConfig {
   const analysisOverride = resolveAnalysisRootOverride();
   const analysisRootAbs =
     analysisOverride ?? path.join(process.cwd(), ".repocheck-analysis");
+  const openAiKey = resolveOpenAiApiKey();
   return {
     ...e,
+    OPENAI_API_KEY: openAiKey,
     REPOCHECK_MODEL_PROVIDER: modelProvider,
     REPOCHECK_LLM_MODEL: llmModel,
     REPOCHECK_ANALYSIS_ROOT: analysisOverride,

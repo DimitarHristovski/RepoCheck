@@ -5,6 +5,10 @@ import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  RiskExplanationCard,
+  type LlmRiskExplanationView,
+} from "@/components/risk-explanation-card";
 
 type Finding = {
   id: string;
@@ -21,6 +25,10 @@ export default function FindingsPage() {
   const sessionId = search.get("session") ?? "";
   const [findings, setFindings] = useState<Finding[]>([]);
   const [filter, setFilter] = useState<string>("all");
+  const [llmFromSession, setLlmFromSession] = useState<{
+    explanation?: LlmRiskExplanationView;
+    error?: { reason: string; message: string } | null;
+  } | null>(null);
 
   const qs = useMemo(() => {
     const p = new URLSearchParams();
@@ -34,6 +42,36 @@ export default function FindingsPage() {
       .then((r) => r.json())
       .then((d) => setFindings(d.findings ?? []));
   }, [qs]);
+
+  useEffect(() => {
+    if (!sessionId) {
+      setLlmFromSession(null);
+      return;
+    }
+    void fetch(`/api/sessions/${sessionId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { session?: { metadataJson?: Record<string, unknown> | null } } | null) => {
+        if (!d?.session?.metadataJson) {
+          setLlmFromSession(null);
+          return;
+        }
+        const m = d.session.metadataJson;
+        const explanation = m.llmRiskExplanation as LlmRiskExplanationView | undefined;
+        const meta = m.llmRiskExplanationMeta as
+          | { reason: string; message: string }
+          | null
+          | undefined;
+        if (!explanation && !meta) {
+          setLlmFromSession(null);
+          return;
+        }
+        setLlmFromSession({
+          explanation,
+          error: meta ?? null,
+        });
+      })
+      .catch(() => setLlmFromSession(null));
+  }, [sessionId]);
 
   async function markReviewed(id: string, reviewed: boolean) {
     await fetch(`/api/findings/${id}`, {
@@ -54,6 +92,13 @@ export default function FindingsPage() {
           Evidence-first list with manual review state. Use filters to narrow noise.
         </p>
       </div>
+
+      {sessionId && (llmFromSession?.explanation || llmFromSession?.error) ? (
+        <RiskExplanationCard
+          explanation={llmFromSession.explanation}
+          error={llmFromSession.error ?? null}
+        />
+      ) : null}
 
       <div className="flex flex-wrap gap-2">
         {(["all", "critical", "high", "medium", "low", "info"] as const).map((s) => (

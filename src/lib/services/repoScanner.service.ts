@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { execFileSync } from "child_process";
 import { getConfig } from "@/lib/config";
+import { getScanMaxFileBytes } from "@/lib/scanLimits";
 import type { HeuristicFinding } from "@/lib/types/findings";
 import {
   parseDockerfile,
@@ -9,7 +10,10 @@ import {
   parsePackageJson,
   parseRequirementsTxt,
 } from "@/lib/services/manifestParser.service";
-import { scanTextContent } from "@/lib/services/heuristicsEngine.service";
+import {
+  pathSensitiveHeuristics,
+  scanTextContent,
+} from "@/lib/services/heuristicsEngine.service";
 import { logger } from "@/lib/logger";
 
 const TEXT_EXT = new Set([
@@ -29,6 +33,7 @@ const TEXT_EXT = new Set([
   ".rs",
   ".java",
   ".gradle",
+  ".rb",
   ".toml",
   ".sh",
   ".ps1",
@@ -111,6 +116,7 @@ export function analyzeLocalRepo(repoRoot: string): {
     .map(([k]) => k);
 
   for (const rel of relPaths) {
+    findings.push(...pathSensitiveHeuristics(rel));
     const abs = path.join(repoRoot, rel);
     const lower = rel.toLowerCase().replace(/\\/g, "/");
 
@@ -128,11 +134,11 @@ export function analyzeLocalRepo(repoRoot: string): {
     }
 
     if (!isProbablyTextFile(rel)) continue;
-    const cfgLimits = getConfig();
+    const maxBytes = getScanMaxFileBytes();
     let raw: string;
     try {
       const st = fs.statSync(abs);
-      if (st.size > cfgLimits.maxScanFileBytes) continue;
+      if (st.size > maxBytes) continue;
       raw = fs.readFileSync(abs, "utf8");
     } catch {
       continue;

@@ -65,6 +65,17 @@ export function getScanSession(id: string): ScanSessionRow | undefined {
   return readStore().scanSessions.find((x) => x.id === id);
 }
 
+export function mergeScanSessionMetadata(
+  sessionId: string,
+  patch: Record<string, unknown>
+): void {
+  mutateStore((s) => {
+    const row = s.scanSessions.find((x) => x.id === sessionId);
+    if (!row) return;
+    row.metadataJson = { ...(row.metadataJson ?? {}), ...patch };
+  });
+}
+
 export function getSessionBundle(id: string): {
   session: ScanSessionRow | undefined;
   scannedItems: ScannedItemRow[];
@@ -268,6 +279,23 @@ export function readAppSettingsBlob(): unknown | null {
 export function writeAppSettingsBlob(value: unknown): void {
   mutateStore((s) => {
     s.appSettings = value;
+  });
+}
+
+/** Wipe persisted scan/repo history and/or approved folders (local JSON store). */
+export function clearLocalData(scope: "scans" | "folders" | "all"): void {
+  mutateStore((s) => {
+    if (scope === "scans" || scope === "all") {
+      s.scanSessions = [];
+      s.scannedItems = [];
+      s.findings = [];
+      s.riskScores = [];
+      s.proposedActions = [];
+      s.repositories = [];
+    }
+    if (scope === "folders" || scope === "all") {
+      s.approvedFolders = [];
+    }
   });
 }
 

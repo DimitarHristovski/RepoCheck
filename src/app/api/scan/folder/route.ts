@@ -5,7 +5,9 @@ import { listApprovedFolderPaths } from "@/lib/approvedFolders";
 import { scanApprovedFolder } from "@/lib/services/fileScanner.service";
 import { scoreFindings } from "@/lib/services/riskScorer.service";
 import { buildOrganizationPlan } from "@/lib/services/organizationPlanner.service";
+import { explainRisksWithLlm } from "@/lib/services/llmRiskExplain.service";
 import { persistFolderScan } from "@/lib/services/scanPersistence.service";
+import { mergeScanSessionMetadata } from "@/lib/store/repository";
 import { getAppSettings } from "@/lib/settingsStore";
 
 export const runtime = "nodejs";
@@ -39,14 +41,36 @@ export async function POST(req: Request) {
     sessionType: "folder",
   });
 
+  const llm = await explainRisksWithLlm({
+    findings,
+    risk,
+    scanKind: "folder",
+  });
+  mergeScanSessionMetadata(sessionId, {
+    llmRiskExplanation: llm.ok ? llm.data : null,
+    llmRiskExplanationMeta: llm.ok
+      ? null
+      : { reason: llm.reason, message: llm.message },
+  });
+
+  const categoryCounts = items.reduce<Record<string, number>>((acc, it) => {
+    acc[it.category] = (acc[it.category] ?? 0) + 1;
+    return acc;
+  }, {});
+
   return NextResponse.json({
     sessionId,
     stats: {
       fileCount: items.length,
       findingsCount: findings.length,
       plannedActions: planned.length,
+      categoryCounts,
     },
     risk,
     errors,
+    llmRiskExplanation: llm.ok ? llm.data : undefined,
+    llmRiskExplanationError: llm.ok
+      ? undefined
+      : { reason: llm.reason, message: llm.message },
   });
 }

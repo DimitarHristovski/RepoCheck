@@ -8,7 +8,7 @@ import {
   scanTextContent,
 } from "@/lib/services/heuristicsEngine.service";
 import type { HeuristicFinding } from "@/lib/types/findings";
-import { getConfig } from "@/lib/config";
+import { getScanMaxFileBytes } from "@/lib/scanLimits";
 
 export type InventoryItem = {
   relativePath: string;
@@ -106,13 +106,12 @@ export function scanApprovedFolder(input: {
   maxDepth?: number;
   ignorePatterns?: string[];
 }): { items: InventoryItem[]; findings: HeuristicFinding[]; errors: string[] } {
-  const cfg = getConfig();
   const maxDepth = input.maxDepth ?? 32;
   const root = assertPathUnderApprovedRoots(input.rootPath, input.approvedRoots);
   const items: InventoryItem[] = [];
   const findings: HeuristicFinding[] = [];
   const errors: string[] = [];
-  const maxBytes = cfg.maxScanFileBytes;
+  const maxBytes = getScanMaxFileBytes();
   const hashMap = new Map<string, string[]>();
 
   const shouldIgnore = (rel: string) => {
