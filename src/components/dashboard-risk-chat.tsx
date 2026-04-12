@@ -1,12 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { RiskCopilotMessageBody } from "@/components/risk-copilot-message-body";
 import type { CopilotRiskPathHint } from "@/lib/store/repository";
 import { Send, Loader2, Paperclip, X } from "lucide-react";
+import { buildPathTreeFromHints } from "@/lib/dashboard/pathTree";
+import { CopilotDirectoryMap } from "@/components/copilot-directory-map";
 
 type Role = "user" | "assistant";
 
@@ -36,6 +38,10 @@ export function DashboardRiskChat(props: {
 }) {
   const { notableFindingCount, copilotRiskPathHints } = props;
   const router = useRouter();
+  const pathTreeRoot = useMemo(
+    () => buildPathTreeFromHints(copilotRiskPathHints),
+    [copilotRiskPathHints]
+  );
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -278,6 +284,10 @@ export function DashboardRiskChat(props: {
       </div>
 
       <div className="min-h-[min(420px,50vh)] max-h-[min(560px,60vh)] space-y-4 overflow-y-auto px-4 py-4">
+        <CopilotDirectoryMap
+          root={pathTreeRoot}
+          pathCount={copilotRiskPathHints.length}
+        />
         {messages.map((m) => (
           <div
             key={m.id}

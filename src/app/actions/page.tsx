@@ -102,6 +102,9 @@ export default function ActionCenterPage() {
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <Button size="sm" variant="secondary" asChild>
+                        <Link href={`/sessions/${s.id}`}>Session</Link>
+                      </Button>
+                      <Button size="sm" variant="outline" asChild>
                         <Link href={`/actions?session=${s.id}`}>Actions</Link>
                       </Button>
                       <Button size="sm" variant="outline" asChild>

@@ -36,7 +36,7 @@ export type ScannedItemRow = {
 
 export type RepositoryRow = {
   id: string;
-  sourceType: "local" | "clone";
+  sourceType: "local" | "clone" | "archive";
   sourceRef: string;
   localPath: string;
   clonedAt: string | null;

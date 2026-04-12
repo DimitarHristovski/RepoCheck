@@ -1,6 +1,5 @@
 import fs from "fs";
 import path from "path";
-import { execFileSync } from "child_process";
 import { getConfig } from "@/lib/config";
 import type { HeuristicFinding } from "@/lib/types/findings";
 import {
@@ -13,7 +12,6 @@ import {
   pathSensitiveHeuristics,
   scanTextContent,
 } from "@/lib/services/heuristicsEngine.service";
-import { logger } from "@/lib/logger";
 
 const TEXT_EXT = new Set([
   ".ts",
@@ -169,37 +167,4 @@ export function analyzeLocalRepo(repoRoot: string): {
       topFolders,
     },
   };
-}
-
-export function cloneRepoToAnalysisDir(input: {
-  url: string;
-  branch?: string;
-  analysisRoot: string;
-}): { localPath: string } {
-  fs.mkdirSync(input.analysisRoot, { recursive: true });
-  const dirName =
-    "clone-" +
-    Buffer.from(input.url)
-      .toString("base64url")
-      .slice(0, 24)
-      .replace(/[^a-zA-Z0-9_-]/g, "");
-  const target = path.join(input.analysisRoot, dirName);
-  if (fs.existsSync(target)) {
-    fs.rmSync(target, { recursive: true, force: true });
-  }
-  const args = ["clone", "--depth", "1", input.url, target];
-  if (input.branch) {
-    args.splice(1, 0, "-b", input.branch);
-  }
-  try {
-    execFileSync("git", args, {
-      stdio: "pipe",
-      timeout: 120_000,
-      encoding: "utf8",
-    });
-  } catch (e) {
-    logger.error({ err: e }, "git clone failed");
-    throw new Error("Git clone failed. Ensure git is installed and URL is reachable.");
-  }
-  return { localPath: target };
 }

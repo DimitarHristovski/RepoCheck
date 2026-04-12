@@ -2,12 +2,21 @@ import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 import { repoScanSchema } from "@/lib/validations/api";
-import { analyzeLocalRepo, cloneRepoToAnalysisDir } from "@/lib/services/repoScanner.service";
+import { analyzeLocalRepo } from "@/lib/services/repoScanner.service";
+import {
+  downloadPublicGithubRepoArchive,
+  fetchGithubDefaultBranch,
+} from "@/lib/services/githubPublicArchive.service";
 import {
   finalizeScanSession,
   persistRepoRecord,
 } from "@/lib/services/scanPersistence.service";
 import { getConfig } from "@/lib/config";
+import {
+  isValidCloneHttpUrl,
+  normalizeGithubRepoUrl,
+  parseGithubOwnerRepoFromWebUrl,
+} from "@/lib/gitHubCloneUrl";
 
 export const runtime = "nodejs";
 
@@ -21,17 +30,56 @@ export async function POST(req: Request) {
   const cfg = getConfig();
   let localPath: string;
   let sourceRef: string;
-  let sourceType: "local" | "clone";
+  let sourceType: "local" | "archive";
 
   if (parsed.data.source.type === "url") {
-    const { localPath: cloned } = cloneRepoToAnalysisDir({
-      url: parsed.data.source.url,
-      branch: parsed.data.source.branch,
-      analysisRoot: cfg.analysisRootAbs,
-    });
-    localPath = cloned;
-    sourceRef = parsed.data.source.url;
-    sourceType = "clone";
+    const normalized = normalizeGithubRepoUrl(parsed.data.source.url);
+    if (!isValidCloneHttpUrl(normalized)) {
+      return NextResponse.json(
+        {
+          error:
+            "Invalid URL. Use https://github.com/owner/repo, owner/repo, or git@github.com:owner/repo (public only).",
+        },
+        { status: 400 }
+      );
+    }
+
+    const gh = parseGithubOwnerRepoFromWebUrl(normalized);
+    if (!gh) {
+      return NextResponse.json(
+        {
+          error:
+            "Only public github.com repositories are supported. Do not put tokens or passwords in the URL.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const branchInput = parsed.data.source.branch?.trim();
+    let branch: string;
+    try {
+      branch =
+        branchInput ?? (await fetchGithubDefaultBranch(gh.owner, gh.repo));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return NextResponse.json({ error: msg }, { status: 400 });
+    }
+
+    try {
+      const { localPath: extracted } = await downloadPublicGithubRepoArchive({
+        owner: gh.owner,
+        repo: gh.repo,
+        branch,
+        analysisRoot: cfg.analysisRootAbs,
+      });
+      localPath = extracted;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return NextResponse.json({ error: msg }, { status: 400 });
+    }
+
+    sourceRef = `https://github.com/${gh.owner}/${gh.repo}`;
+    sourceType = "archive";
   } else {
     const raw = parsed.data.source.path.trim();
     if (!raw) {

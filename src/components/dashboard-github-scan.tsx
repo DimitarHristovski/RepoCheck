@@ -7,27 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Github, Loader2 } from "lucide-react";
-
-function normalizeCloneUrl(input: string): string {
-  let u = input.trim();
-  if (!u) return u;
-  if (!/^https?:\/\//i.test(u)) {
-    u = `https://${u}`;
-  }
-  try {
-    const parsed = new URL(u);
-    if (parsed.hostname === "github.com" && !parsed.pathname.endsWith(".git")) {
-      const path = parsed.pathname.replace(/\/+$/, "");
-      if (path.split("/").filter(Boolean).length === 2) {
-        parsed.pathname = `${path}.git`;
-        return parsed.toString();
-      }
-    }
-    return parsed.toString();
-  } catch {
-    return u;
-  }
-}
+import { normalizeGithubRepoUrl } from "@/lib/gitHubCloneUrl";
 
 export function DashboardGithubScan() {
   const router = useRouter();
@@ -42,19 +22,19 @@ export function DashboardGithubScan() {
     setOk(null);
     const raw = url.trim();
     if (!raw) {
-      setErr("Paste a GitHub HTTPS URL (or org/repo).");
+      setErr("Paste a GitHub URL, owner/repo, or git@github.com:owner/repo.");
       return;
     }
     setBusy(true);
     try {
-      const cloneUrl = normalizeCloneUrl(raw);
+      const repoUrl = normalizeGithubRepoUrl(raw);
       const res = await fetch("/api/scan/repo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           source: {
             type: "url",
-            url: cloneUrl,
+            url: repoUrl,
             branch: branch.trim() || undefined,
           },
         }),
@@ -86,7 +66,10 @@ export function DashboardGithubScan() {
           Scan GitHub repo directly
         </CardTitle>
         <CardDescription>
-          No approved folders required. Shallow clone under the app&apos;s analysis directory, static scan only.
+          <strong className="font-medium text-zinc-400">Public github.com repos only</strong> — no git install, no
+          cloning. RepoCheck downloads GitHub&apos;s ZIP for the branch (default from the API if you leave branch
+          empty), extracts under your analysis directory, and runs static heuristics. Private repos and tokens in URLs
+          are not supported.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -97,7 +80,7 @@ export function DashboardGithubScan() {
               id="gh-url"
               name="repocheck-github-url"
               autoComplete="off"
-              placeholder="https://github.com/org/repo or github.com/org/repo"
+              placeholder="e.g. vercel/next.js or https://github.com/org/repo"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               onKeyDown={(e) => {
@@ -124,10 +107,10 @@ export function DashboardGithubScan() {
             {busy ? (
               <>
                 <Loader2 className="size-4 animate-spin" />
-                Cloning…
+                Downloading…
               </>
             ) : (
-              "Clone & scan"
+              "Scan public repo"
             )}
           </Button>
         </div>

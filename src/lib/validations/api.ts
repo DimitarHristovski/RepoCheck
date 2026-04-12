@@ -1,13 +1,14 @@
 import { z } from "zod";
 
-/** Local absolute path to repo root, or clone from URL. */
+/** Local absolute path to repo root, or public GitHub repo (ZIP download, not git). */
 export const repoScanSchema = z.object({
   source: z.union([
     z.object({ type: z.literal("local"), path: z.string().min(1) }),
     z.object({
       type: z.literal("url"),
-      url: z.string().url(),
-      branch: z.string().optional(),
+      /** Raw paste: HTTPS URL, owner/repo, SSH, or github.com/... — normalized server-side. */
+      url: z.string().min(1).max(2048),
+      branch: z.string().max(256).optional(),
     }),
   ]),
 });

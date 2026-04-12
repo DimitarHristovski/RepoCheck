@@ -39,7 +39,8 @@ export default function DashboardPage() {
             Dashboard
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-zinc-400">
-            Clone any <strong className="font-medium text-zinc-300">GitHub</strong> repo from here,
+            Scan any <strong className="font-medium text-zinc-300">public GitHub</strong> repo from here (ZIP download,
+            no git),
             or <strong className="font-medium text-zinc-300">attach zips / source files</strong> in Risk copilot (saved
             as upload sessions with findings). The copilot merges store scans with attachment context — metadata and
             short descriptions, not full repos unless quoted.
@@ -134,6 +135,9 @@ export default function DashboardPage() {
                     <p className="text-xs text-zinc-500">{s.id.slice(0, 8)}…</p>
                   </div>
                   <div className="flex flex-wrap gap-1">
+                    <Button variant="ghost" size="sm" asChild>
+                      <Link href={`/sessions/${s.id}`}>Session</Link>
+                    </Button>
                     <Button variant="ghost" size="sm" asChild>
                       <Link href={`/findings?session=${s.id}`}>Findings</Link>
                     </Button>

@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 
 const links = [
   { href: "/", label: "Dashboard" },
+  { href: "/sessions", label: "Sessions" },
   { href: "/findings", label: "Findings" },
   { href: "/actions", label: "Action Center" },
   { href: "/settings", label: "Settings" },

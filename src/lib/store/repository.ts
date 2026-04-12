@@ -203,7 +203,7 @@ export function persistFolderScan(input: {
 }
 
 export function persistRepoRecord(input: {
-  sourceType: "local" | "clone";
+  sourceType: "local" | "clone" | "archive";
   sourceRef: string;
   localPath: string;
 }): string {
@@ -214,7 +214,7 @@ export function persistRepoRecord(input: {
       sourceType: input.sourceType,
       sourceRef: input.sourceRef,
       localPath: input.localPath,
-      clonedAt: input.sourceType === "clone" ? iso() : null,
+      clonedAt: input.sourceType === "local" ? null : iso(),
       createdAt: iso(),
     });
   });

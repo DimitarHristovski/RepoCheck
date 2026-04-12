@@ -14,7 +14,7 @@ export function DashboardResetPanel() {
   async function reset(scope: "scans" | "all") {
     const ok = window.confirm(
       scope === "all"
-        ? "Clear all scan history, findings, and clone records from this machine? (Also clears legacy folder entries from the store file.)"
+        ? "Clear all scan history, findings, and downloaded GitHub archives from this machine? (Also clears legacy folder entries from the store file.)"
         : "Remove all repo scan sessions, findings, and scores from the local store?"
     );
     if (!ok) return;

@@ -43,7 +43,7 @@ export default function SettingsPage() {
     const ok = window.confirm(
       scope === "all"
         ? "Clear all scan history and legacy store entries (including old folder approvals)?"
-        : "Delete all repo scan sessions, findings, and clone records from the local store?"
+        : "Delete all repo scan sessions, findings, and GitHub/archive records from the local store?"
     );
     if (!ok) return;
     setResetBusy(true);

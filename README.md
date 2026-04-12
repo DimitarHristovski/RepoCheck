@@ -6,7 +6,7 @@ Local-first **repository** static analysis with heuristics, risk scoring, option
 
 - **No auto-execution** of install scripts, repo code, or shell from this tool.
 - **No auto-delete**; proposed actions from legacy scans may still be approved/rejected in the UI without automatic file moves unless you wire execution.
-- **Local repo scans** use an absolute path you provide; **remote clones** go only under `REPOCHECK_ANALYSIS_ROOT` (default `.repocheck-analysis/`). Legacy env `FILESENTINEL_ANALYSIS_ROOT` is still read if set.
+- **Local repo scans** use an absolute path you provide; **public GitHub repos** are fetched as ZIP archives (no git) under `REPOCHECK_ANALYSIS_ROOT` (default `.repocheck-analysis/`). Legacy env `FILESENTINEL_ANALYSIS_ROOT` is still read if set.
 - **LLM calls** are off by default; when enabled, prompts use **redacted, structured findings** unless you change privacy settings.
 
 ## Quick start
@@ -33,7 +33,7 @@ Invoke: `POST /api/graph/run` with `{ "requestType": "repo_scan", "repoLocalPath
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| POST | `/api/scan/repo` | Local path or HTTPS clone + static analysis + persist |
+| POST | `/api/scan/repo` | Local path or **public** github.com repo (ZIP) + static analysis + persist |
 | POST | `/api/dashboard/chat` | Risk copilot (store findings + optional attachment context) |
 | POST | `/api/dashboard/analyze-upload` | Zip / text files → heuristic summary for copilot |
 | GET/PATCH | `/api/settings` | Settings in JSON store |
