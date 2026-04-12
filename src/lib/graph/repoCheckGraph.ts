@@ -1,9 +1,7 @@
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import type { RepoCheckState } from "@/lib/graph/state";
-import { scanApprovedFolder } from "@/lib/services/fileScanner.service";
 import { analyzeLocalRepo } from "@/lib/services/repoScanner.service";
 import { scoreFindings } from "@/lib/services/riskScorer.service";
-import { buildOrganizationPlan } from "@/lib/services/organizationPlanner.service";
 import { createChatModel } from "@/lib/llm/modelAdapter";
 import { REASONING_SYSTEM, buildReasoningUserPayload } from "@/lib/graph/prompts";
 import { redactForLLM, truncateForMetadata } from "@/lib/services/redaction.service";
@@ -13,8 +11,6 @@ import { z } from "zod";
 const State = Annotation.Root({
   requestType: Annotation<RepoCheckState["requestType"]>(),
   userMessage: Annotation<string | undefined>(),
-  approvedFolderPath: Annotation<string | undefined>(),
-  approvedRoots: Annotation<string[]>(),
   repoLocalPath: Annotation<string | undefined>(),
   inventory: Annotation<RepoCheckState["inventory"]>(),
   heuristicFindings: Annotation<RepoCheckState["heuristicFindings"]>(),
@@ -29,52 +25,13 @@ const State = Annotation.Root({
 
 type S = typeof State.State;
 
-async function intakeNode(state: S): Promise<Partial<S>> {
-  if (!state.approvedRoots?.length) {
-    return {
-      safetyBlocked: true,
-      safetyReason: "No approved folder roots configured.",
-    };
-  }
-  return {};
-}
-
-/** Folder inventory + optional repo static analysis in one place for clean state merges. */
 async function staticScanNode(state: S): Promise<Partial<S>> {
   if (state.safetyBlocked) return {};
 
   const outFindings: NonNullable<RepoCheckState["heuristicFindings"]> = [];
   const errs: string[] = [];
-  let inventory = state.inventory;
 
-  const wantsFolder =
-    state.requestType === "file_organization" ||
-    state.requestType === "folder_protection" ||
-    state.requestType === "mixed";
-
-  if (wantsFolder && state.approvedFolderPath) {
-    try {
-      const { items, findings, errors } = scanApprovedFolder({
-        rootPath: state.approvedFolderPath,
-        approvedRoots: state.approvedRoots,
-      });
-      inventory = items;
-      outFindings.push(...findings);
-      errs.push(...errors);
-    } catch (e) {
-      errs.push(String(e));
-      return {
-        safetyBlocked: true,
-        safetyReason: String(e),
-        errors: errs,
-      };
-    }
-  }
-
-  const wantsRepo =
-    state.requestType === "repo_scan" || state.requestType === "mixed";
-
-  if (wantsRepo && state.repoLocalPath) {
+  if (state.repoLocalPath) {
     try {
       const { findings } = analyzeLocalRepo(state.repoLocalPath);
       outFindings.push(...findings);
@@ -84,7 +41,6 @@ async function staticScanNode(state: S): Promise<Partial<S>> {
   }
 
   return {
-    inventory,
     heuristicFindings: outFindings,
     errors: errs,
   };
@@ -102,11 +58,6 @@ async function scoreNode(state: S): Promise<Partial<S>> {
       rationale: scored.rationale,
     },
   };
-}
-
-async function planNode(state: S): Promise<Partial<S>> {
-  if (!state.inventory?.length) return {};
-  return { plannedActions: buildOrganizationPlan(state.inventory) };
 }
 
 async function llmNode(state: S): Promise<Partial<S>> {
@@ -170,46 +121,33 @@ async function llmNode(state: S): Promise<Partial<S>> {
   };
 }
 
-async function safetyNode(): Promise<Partial<S>> {
-  return {};
-}
-
-async function reportNode(): Promise<Partial<S>> {
+async function passthrough(): Promise<Partial<S>> {
   return {};
 }
 
 export function buildRepoCheckGraph() {
   return new StateGraph(State)
-    .addNode("intake", intakeNode)
     .addNode("static_scan", staticScanNode)
     .addNode("score", scoreNode)
-    .addNode("plan", planNode)
     .addNode("llm", llmNode)
-    .addNode("safety", safetyNode)
-    .addNode("report", reportNode)
-    .addEdge(START, "intake")
-    .addEdge("intake", "static_scan")
+    .addNode("done", passthrough)
+    .addEdge(START, "static_scan")
     .addEdge("static_scan", "score")
-    .addEdge("score", "plan")
-    .addEdge("plan", "llm")
-    .addEdge("llm", "safety")
-    .addEdge("safety", "report")
-    .addEdge("report", END)
+    .addEdge("score", "llm")
+    .addEdge("llm", "done")
+    .addEdge("done", END)
     .compile();
 }
 
 export async function runRepoCheckWorkflow(
   initial: Partial<RepoCheckState> & {
-    approvedRoots: string[];
     privacyMetadataOnly: boolean;
   }
 ) {
   const graph = buildRepoCheckGraph();
   return graph.invoke({
-    requestType: initial.requestType ?? "mixed",
+    requestType: initial.requestType ?? "repo_scan",
     userMessage: initial.userMessage,
-    approvedFolderPath: initial.approvedFolderPath,
-    approvedRoots: initial.approvedRoots,
     repoLocalPath: initial.repoLocalPath,
     privacyMetadataOnly: initial.privacyMetadataOnly,
     inventory: initial.inventory,

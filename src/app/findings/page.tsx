@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -89,8 +90,22 @@ export default function FindingsPage() {
       <div>
         <h1 className="text-2xl font-semibold text-zinc-50">Findings Explorer</h1>
         <p className="mt-1 text-sm text-zinc-400">
-          Evidence-first list with manual review state. Use filters to narrow noise.
+          Evidence-first list with manual review state. Use filters to narrow noise. Repo scans, GitHub clones, and
+          dashboard uploads all persist findings here.
         </p>
+        {!sessionId && (
+          <p className="mt-2 text-xs text-zinc-500">
+            Showing recent findings across sessions. Filter by session from{" "}
+            <Link href="/" className="text-emerald-400 underline">
+              Dashboard
+            </Link>{" "}
+            → Recent scans, or{" "}
+            <Link href="/actions" className="text-emerald-400 underline">
+              Action Center
+            </Link>
+            .
+          </p>
+        )}
       </div>
 
       {sessionId && (llmFromSession?.explanation || llmFromSession?.error) ? (

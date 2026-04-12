@@ -42,7 +42,7 @@ function extractJsonObject(text: string): unknown {
 export async function explainRisksWithLlm(input: {
   findings: HeuristicFinding[];
   risk: RiskScoreResult;
-  scanKind: "folder" | "repo";
+  scanKind: "folder" | "repo" | "upload";
 }): Promise<LlmRiskExplainResult> {
   const model = createChatModel();
   if (!model) {

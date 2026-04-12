@@ -9,8 +9,10 @@ import type {
   ScannedItemRow,
 } from "@/lib/store/types";
 import type { HeuristicFinding } from "@/lib/types/findings";
-import type { InventoryItem } from "@/lib/services/fileScanner.service";
-import type { PlannedAction } from "@/lib/services/organizationPlanner.service";
+import type {
+  PersistedInventoryItem,
+  PersistedPlannedAction,
+} from "@/lib/types/persistedScan";
 import type { RiskScoreResult } from "@/lib/services/riskScorer.service";
 
 function iso(d = new Date()) {
@@ -21,40 +23,6 @@ function sortByCreatedAtDesc<T extends { createdAt: string }>(rows: T[]): T[] {
   return [...rows].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
-}
-
-export function listApprovedFolders(): ApprovedFolderRow[] {
-  return readStore().approvedFolders;
-}
-
-export function listApprovedFolderPaths(): string[] {
-  return readStore().approvedFolders.map((f) => f.path);
-}
-
-export function getApprovedFolderById(id: string): ApprovedFolderRow | undefined {
-  return readStore().approvedFolders.find((f) => f.id === id);
-}
-
-export function insertApprovedFolder(row: Omit<ApprovedFolderRow, "createdAt">): void {
-  mutateStore((s) => {
-    s.approvedFolders.push({ ...row, createdAt: iso() });
-  });
-}
-
-export function deleteApprovedFolder(id: string): ApprovedFolderRow | undefined {
-  let removed: ApprovedFolderRow | undefined;
-  mutateStore((s) => {
-    const i = s.approvedFolders.findIndex((f) => f.id === id);
-    if (i >= 0) {
-      removed = s.approvedFolders[i];
-      s.approvedFolders.splice(i, 1);
-    }
-  });
-  return removed;
-}
-
-export function getApprovedFolderByPath(p: string): ApprovedFolderRow | undefined {
-  return readStore().approvedFolders.find((f) => f.path === p);
 }
 
 export function listScanSessions(limit = 50): ScanSessionRow[] {
@@ -151,11 +119,11 @@ export function getProposedActionById(id: string): ProposedActionRow | undefined
 
 export function persistFolderScan(input: {
   approvedFolderId: string | null;
-  items: InventoryItem[];
+  items: PersistedInventoryItem[];
   heuristicFindings: HeuristicFinding[];
   risk: RiskScoreResult;
-  planned: PlannedAction[];
-  sessionType: "folder" | "repo" | "mixed";
+  planned: PersistedPlannedAction[];
+  sessionType: "folder" | "repo" | "mixed" | "upload";
   repositoryId?: string | null;
 }): { sessionId: string } {
   const sessionId = randomUUID();
@@ -282,6 +250,51 @@ export function writeAppSettingsBlob(value: unknown): void {
   });
 }
 
+const REPO_NOTABLE_SEVERITIES = ["critical", "high", "medium"] as const;
+
+/** Recent medium+ findings from repo + dashboard upload scans (newest first), shared by dashboard and Risk copilot. */
+export function listRepoMediumPlusFindings(limit: number): FindingRow[] {
+  const s = readStore();
+  const repoSessionIds = new Set(
+    s.scanSessions
+      .filter((x) => x.type === "repo" || x.type === "upload")
+      .map((x) => x.id)
+  );
+  return sortByCreatedAtDesc(
+    s.findings.filter(
+      (f) =>
+        repoSessionIds.has(f.sessionId) &&
+        (REPO_NOTABLE_SEVERITIES as readonly string[]).includes(f.severity)
+    )
+  ).slice(0, limit);
+}
+
+export type CopilotRiskPathHint = {
+  path: string;
+  severity: "critical" | "high" | "medium";
+};
+
+/** One entry per path (forward-slash normalized), worst severity wins — for copilot UI highlighting. */
+export function buildCopilotRiskPathHints(
+  findings: FindingRow[]
+): CopilotRiskPathHint[] {
+  const rank: Record<CopilotRiskPathHint["severity"], number> = {
+    critical: 0,
+    high: 1,
+    medium: 2,
+  };
+  const best = new Map<string, CopilotRiskPathHint["severity"]>();
+  for (const f of findings) {
+    if (!f.filePath?.trim()) continue;
+    const sev = f.severity;
+    if (sev !== "critical" && sev !== "high" && sev !== "medium") continue;
+    const key = f.filePath.trim().replace(/\\/g, "/");
+    const prev = best.get(key);
+    if (!prev || rank[sev] < rank[prev]) best.set(key, sev);
+  }
+  return [...best.entries()].map(([path, severity]) => ({ path, severity }));
+}
+
 /** Wipe persisted scan/repo history and/or approved folders (local JSON store). */
 export function clearLocalData(scope: "scans" | "folders" | "all"): void {
   mutateStore((s) => {
@@ -305,21 +318,29 @@ export function getDashboardSnapshot(): {
   folders: ApprovedFolderRow[];
   recentSessions: ScanSessionRow[];
   flaggedFindings: FindingRow[];
+  copilotRiskPathHints: CopilotRiskPathHint[];
   riskTrend: RiskScoreRow[];
 } {
   const s = readStore();
-  const recentSessions = sortByCreatedAtDesc(s.scanSessions).slice(0, 10);
-  const flagged = sortByCreatedAtDesc(
-    s.findings.filter((f) =>
-      ["critical", "high", "medium"].includes(f.severity)
-    )
-  ).slice(0, 20);
-  const riskTrend = sortByCreatedAtDesc(s.riskScores).slice(0, 12);
+  const repoSessions = s.scanSessions.filter(
+    (x) => x.type === "repo" || x.type === "upload"
+  );
+  const repoSessionIds = new Set(repoSessions.map((x) => x.id));
+
+  const recentSessions = sortByCreatedAtDesc(repoSessions).slice(0, 10);
+  const flaggedPool = listRepoMediumPlusFindings(40);
+  const flagged = flaggedPool.slice(0, 20);
+  const copilotRiskPathHints = buildCopilotRiskPathHints(flaggedPool);
+  const riskTrend = sortByCreatedAtDesc(
+    s.riskScores.filter((r) => repoSessionIds.has(r.sessionId))
+  ).slice(0, 12);
+
   return {
-    approvedFolderCount: s.approvedFolders.length,
-    folders: s.approvedFolders,
+    approvedFolderCount: 0,
+    folders: [],
     recentSessions,
     flaggedFindings: flagged,
+    copilotRiskPathHints,
     riskTrend,
   };
 }

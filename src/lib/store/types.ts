@@ -7,7 +7,7 @@ export type ApprovedFolderRow = {
 
 export type ScanSessionRow = {
   id: string;
-  type: "folder" | "repo" | "mixed";
+  type: "folder" | "repo" | "mixed" | "upload";
   status: "pending" | "running" | "completed" | "failed" | "cancelled";
   approvedFolderId: string | null;
   repositoryId: string | null;

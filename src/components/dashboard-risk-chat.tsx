@@ -2,8 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Send, Loader2 } from "lucide-react";
+import { RiskCopilotMessageBody } from "@/components/risk-copilot-message-body";
+import type { CopilotRiskPathHint } from "@/lib/store/repository";
+import { Send, Loader2, Paperclip, X } from "lucide-react";
 
 type Role = "user" | "assistant";
 
@@ -13,7 +16,15 @@ function genId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-const OVERVIEW_PROMPT = `Give a ChatGPT-style overview of my latest static scan findings from your context: prioritize files to review first, what each class of signal might mean if abused, and practical next steps. Use markdown ## headings and bullet lists. Stay grounded only in the paths and descriptions you were given — no invented files. About 300–500 words unless there are very few findings.`;
+const STATIC_HINT_ID = "static-hint-empty";
+
+const OVERVIEW_PROMPT = `Using your auditor methodology (steps 1–7), produce a structured assessment of the FINDINGS CONTEXT below.
+
+Follow STEP 7 output format: Summary (verdict + confidence), Key Findings (paths, signal types, why it matters), Context Analysis (normal vs suspicious), Final Reasoning.
+
+Be conversational but structured. Down-weight findings in LOW_TRUST paths unless correlated with other signals. Prefer NEEDS MANUAL REVIEW over false accusation. About 400–700 words unless there are very few findings.`;
+
+const UPLOAD_OVERVIEW_PROMPT = `Focus primarily on the UPLOADED ARTIFACT SCAN section (user-supplied zip/files). Produce a STEP 7 style assessment: Summary, Key Findings, Context Analysis, Final Reasoning. If the store also has other findings, mention how they relate.`;
 
 type ApiResult =
   | { ok: true; reply: string }
@@ -21,12 +32,18 @@ type ApiResult =
 
 export function DashboardRiskChat(props: {
   notableFindingCount: number;
+  copilotRiskPathHints: CopilotRiskPathHint[];
 }) {
-  const { notableFindingCount } = props;
+  const { notableFindingCount, copilotRiskPathHints } = props;
+  const router = useRouter();
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
+  const [attachmentContext, setAttachmentContext] = useState<string | null>(null);
+  const [attachmentLabel, setAttachmentLabel] = useState<string | null>(null);
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const bootstrapOnce = useRef(false);
 
@@ -38,41 +55,54 @@ export function DashboardRiskChat(props: {
     scrollToBottom();
   }, [messages, loading, scrollToBottom]);
 
-  const callChat = useCallback(async (thread: { role: Role; content: string }[]): Promise<ApiResult> => {
-    setLoading(true);
-    setBanner(null);
-    try {
-      const res = await fetch("/api/dashboard/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: thread }),
-      });
-      const data = (await res.json()) as {
-        reply?: string;
-        error?: string;
-        message?: string;
-      };
-      if (!res.ok) {
-        if (data.error === "no_model") {
-          const msg =
-            data.message ??
-            "Configure OPENAI_API_KEY or Ollama in Settings to enable chat.";
-          setBanner(msg);
-          return { ok: false, message: msg };
-        }
-        return {
-          ok: false,
-          message: data.message ?? data.error ?? res.statusText,
+  const callChat = useCallback(
+    async (
+      thread: { role: Role; content: string }[],
+      attachmentOverride?: string | null
+    ): Promise<ApiResult> => {
+      const raw =
+        attachmentOverride !== undefined ? attachmentOverride : attachmentContext;
+      const trimmed = raw?.trim() || undefined;
+
+      setLoading(true);
+      setBanner(null);
+      try {
+        const res = await fetch("/api/dashboard/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: thread,
+            ...(trimmed ? { attachmentContext: trimmed } : {}),
+          }),
+        });
+        const data = (await res.json()) as {
+          reply?: string;
+          error?: string;
+          message?: string;
         };
+        if (!res.ok) {
+          if (data.error === "no_model") {
+            const msg =
+              data.message ??
+              "Configure OPENAI_API_KEY or Ollama in Settings to enable chat.";
+            setBanner(msg);
+            return { ok: false, message: msg };
+          }
+          return {
+            ok: false,
+            message: data.message ?? data.error ?? res.statusText,
+          };
+        }
+        if (!data.reply) return { ok: false, message: "Empty reply from model." };
+        return { ok: true, reply: data.reply.trim() };
+      } catch (e) {
+        return { ok: false, message: e instanceof Error ? e.message : String(e) };
+      } finally {
+        setLoading(false);
       }
-      if (!data.reply) return { ok: false, message: "Empty reply from model." };
-      return { ok: true, reply: data.reply.trim() };
-    } catch (e) {
-      return { ok: false, message: e instanceof Error ? e.message : String(e) };
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    },
+    [attachmentContext]
+  );
 
   useEffect(() => {
     if (bootstrapOnce.current) return;
@@ -81,17 +111,19 @@ export function DashboardRiskChat(props: {
     if (notableFindingCount === 0) {
       setMessages([
         {
-          id: genId(),
+          id: STATIC_HINT_ID,
           role: "assistant",
           content:
-            "I don’t have any medium-or-higher findings in your local store yet. Run a Folder scan or Repo scan, then refresh this page — I’ll summarize the risky patterns and files so we can talk them through.",
+            "No medium+ findings in your local store yet.\n\n" +
+            "• Scan a GitHub repo above, or attach zips / source files below (saved as an upload session).\n" +
+            "• Open Findings or Action Center from Recent scans on the dashboard.",
         },
       ]);
       return;
     }
 
     void (async () => {
-      const result = await callChat([{ role: "user", content: OVERVIEW_PROMPT }]);
+      const result = await callChat([{ role: "user", content: OVERVIEW_PROMPT }], null);
       if (result.ok) {
         setMessages([{ id: genId(), role: "assistant", content: result.reply }]);
       } else {
@@ -101,7 +133,7 @@ export function DashboardRiskChat(props: {
             role: "assistant",
             content:
               result.message +
-              "\n\nYou can still review structured findings below or configure an LLM under Settings.",
+              "\n\nYou can still attach a zip, use GitHub scan, or configure an LLM under Settings.",
           },
         ]);
       }
@@ -135,14 +167,106 @@ export function DashboardRiskChat(props: {
     }
   }
 
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const list = e.target.files;
+    if (!list?.length) return;
+    setUploadBusy(true);
+    setBanner(null);
+    try {
+      const fd = new FormData();
+      for (let i = 0; i < list.length; i++) {
+        fd.append("files", list[i]!);
+      }
+      const res = await fetch("/api/dashboard/analyze-upload", {
+        method: "POST",
+        body: fd,
+      });
+      const data = (await res.json()) as {
+        error?: string;
+        contextBlock?: string;
+        fileNames?: string[];
+        findingsCount?: number;
+        sessionId?: string;
+      };
+      if (!res.ok) {
+        throw new Error(data.error ?? "Upload analysis failed");
+      }
+      const block = data.contextBlock ?? "";
+      const names = (data.fileNames ?? []).join(", ");
+      setAttachmentContext(block);
+      setAttachmentLabel(names || "upload");
+
+      const result = await callChat(
+        [{ role: "user", content: UPLOAD_OVERVIEW_PROMPT }],
+        block
+      );
+
+      const sid = data.sessionId ?? "";
+      const sessionNote = sid
+        ? ` Saved as session ${sid.slice(0, 8)}… — use Recent scans → Findings / Actions.`
+        : "";
+
+      setMessages((prev) => {
+        const cleared = prev.filter((m) => m.id !== STATIC_HINT_ID);
+        const userLine: Msg = {
+          id: genId(),
+          role: "user",
+          content: `[Attached: ${names}] · ${data.findingsCount ?? 0} heuristic signals.${sessionNote}`,
+        };
+        if (result.ok) {
+          return [
+            ...cleared,
+            userLine,
+            { id: genId(), role: "assistant", content: result.reply },
+          ];
+        }
+        return [
+          ...cleared,
+          userLine,
+          { id: genId(), role: "assistant", content: result.message },
+        ];
+      });
+      router.refresh();
+    } catch (err) {
+      setBanner(err instanceof Error ? err.message : String(err));
+    } finally {
+      setUploadBusy(false);
+      e.target.value = "";
+    }
+  }
+
+  function clearAttachment() {
+    setAttachmentContext(null);
+    setAttachmentLabel(null);
+  }
+
   return (
     <div className="flex flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-xl">
       <div className="border-b border-zinc-800 px-4 py-3">
         <h2 className="text-lg font-semibold text-zinc-50">Risk copilot</h2>
         <p className="text-xs text-zinc-500">
-          Chat about your latest static findings (paths &amp; short descriptions only). Ask follow-ups like which
-          file to open first or how to verify safely — not a malware verdict.
+          Chat with store findings plus optional uploads: .zip archives or text-like source files (static heuristics
+          only). Not a malware verdict. Paths that match medium+ scanner hits are underlined (
+          <span className="text-red-300/90">critical</span>,{" "}
+          <span className="text-orange-200/90">high</span>,{" "}
+          <span className="text-amber-200/80">medium</span>).
         </p>
+        {attachmentLabel && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+            <Paperclip className="size-3.5 shrink-0" />
+            <span className="truncate">Context: {attachmentLabel}</span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-zinc-500"
+              onClick={clearAttachment}
+            >
+              <X className="size-3.5" />
+              Clear upload context
+            </Button>
+          </div>
+        )}
         {banner && (
           <p className="mt-2 text-xs text-amber-200/90">
             {banner}{" "}
@@ -166,19 +290,42 @@ export function DashboardRiskChat(props: {
             <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
               {m.role === "user" ? "You" : "RepoCheck"}
             </p>
-            <div className="whitespace-pre-wrap leading-relaxed">{m.content}</div>
+            <RiskCopilotMessageBody text={m.content} riskPathHints={copilotRiskPathHints} />
           </div>
         ))}
-        {loading && (
+        {(loading || uploadBusy) && (
           <div className="flex items-center gap-2 text-sm text-zinc-500">
             <Loader2 className="size-4 animate-spin" />
-            Thinking…
+            {uploadBusy ? "Scanning upload…" : "Thinking…"}
           </div>
         )}
         <div ref={bottomRef} />
       </div>
 
-      <div className="border-t border-zinc-800 p-3">
+      <div className="border-t border-zinc-800 p-3 space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            ref={fileRef}
+            type="file"
+            multiple
+            className="hidden"
+            accept=".zip,.txt,.md,.json,.js,.jsx,.mjs,.cjs,.ts,.tsx,.yml,.yaml,.sh,.ps1,.bat,.py,.toml"
+            onChange={(e) => void handleFileChange(e)}
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={uploadBusy || loading}
+            onClick={() => fileRef.current?.click()}
+          >
+            <Paperclip className="size-4" />
+            Attach zip / files
+          </Button>
+          <span className="text-[10px] text-zinc-600">
+            Max 6 files per request. PDFs not parsed — use zip with source.
+          </span>
+        </div>
         <div className="flex gap-2">
           <textarea
             className="min-h-[44px] flex-1 resize-none rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-emerald-900/50"
@@ -197,7 +344,7 @@ export function DashboardRiskChat(props: {
           <Button
             type="button"
             className="shrink-0 self-end"
-            disabled={loading || !input.trim()}
+            disabled={loading || uploadBusy || !input.trim()}
             onClick={() => void handleSend()}
           >
             <Send className="size-4" />

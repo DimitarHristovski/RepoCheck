@@ -37,6 +37,11 @@ export function RiskTrendChart({ data }: { data: Point[] }) {
               borderRadius: 8,
             }}
             labelStyle={{ color: "#a1a1aa" }}
+            formatter={(value, _name, item) => {
+              const v = typeof value === "number" ? value : Number(value);
+              const label = (item?.payload as { label?: string } | undefined)?.label;
+              return [`${Number.isFinite(v) ? v : value} (${label ?? "band"})`, "Heuristic score"];
+            }}
           />
           <Line
             type="monotone"

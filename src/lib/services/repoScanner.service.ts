@@ -2,7 +2,6 @@ import fs from "fs";
 import path from "path";
 import { execFileSync } from "child_process";
 import { getConfig } from "@/lib/config";
-import { getScanMaxFileBytes } from "@/lib/scanLimits";
 import type { HeuristicFinding } from "@/lib/types/findings";
 import {
   parseDockerfile,
@@ -134,11 +133,8 @@ export function analyzeLocalRepo(repoRoot: string): {
     }
 
     if (!isProbablyTextFile(rel)) continue;
-    const maxBytes = getScanMaxFileBytes();
     let raw: string;
     try {
-      const st = fs.statSync(abs);
-      if (st.size > maxBytes) continue;
       raw = fs.readFileSync(abs, "utf8");
     } catch {
       continue;

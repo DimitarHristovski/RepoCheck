@@ -11,13 +11,11 @@ export function DashboardResetPanel() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  async function reset(scope: "scans" | "folders" | "all") {
+  async function reset(scope: "scans" | "all") {
     const ok = window.confirm(
       scope === "all"
-        ? "Clear the dashboard: remove all approved folders and all scan history from this machine?"
-        : scope === "folders"
-          ? "Remove all approved folders from the local store?"
-          : "Remove all scan sessions, findings, and scores from the local store? (Approved folders stay.)"
+        ? "Clear all scan history, findings, and clone records from this machine? (Also clears legacy folder entries from the store file.)"
+        : "Remove all repo scan sessions, findings, and scores from the local store?"
     );
     if (!ok) return;
     setBusy(true);
@@ -26,7 +24,7 @@ export function DashboardResetPanel() {
       const res = await fetch("/api/store/reset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scope }),
+        body: JSON.stringify({ scope: scope === "all" ? "all" : "scans" }),
       });
       if (!res.ok) {
         const d = (await res.json()) as { error?: unknown };
@@ -47,8 +45,8 @@ export function DashboardResetPanel() {
       <CardHeader>
         <CardTitle className="text-zinc-100">Dashboard data on this device</CardTitle>
         <CardDescription>
-          The cards above read from <code className="text-zinc-500">data/repocheck-store.json</code>. Resetting
-          here updates the file and refreshes this page so counts and lists match immediately.
+          Data lives in <code className="text-zinc-500">data/repocheck-store.json</code>. Reset updates the file and
+          refreshes this page.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
@@ -62,26 +60,18 @@ export function DashboardResetPanel() {
         </Button>
         <Button
           type="button"
-          variant="secondary"
-          disabled={busy}
-          onClick={() => void reset("folders")}
-        >
-          Remove approved folders
-        </Button>
-        <Button
-          type="button"
           variant="outline"
           className="border-red-900/60 text-red-200 hover:bg-red-950/40"
           disabled={busy}
           onClick={() => void reset("all")}
         >
-          Reset entire dashboard
+          Reset everything in store
         </Button>
         <Link
           href="/settings"
           className="inline-flex items-center text-sm text-zinc-500 underline-offset-4 hover:text-zinc-300 hover:underline"
         >
-          More options in Settings
+          Settings
         </Link>
         {msg && <p className="w-full text-sm text-zinc-400">{msg}</p>}
       </CardContent>

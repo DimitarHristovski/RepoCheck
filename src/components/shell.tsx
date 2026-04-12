@@ -4,8 +4,6 @@ import { cn } from "@/lib/utils";
 
 const links = [
   { href: "/", label: "Dashboard" },
-  { href: "/folder-scanner", label: "Folder Scanner" },
-  { href: "/repo-scanner", label: "Repo Scanner" },
   { href: "/findings", label: "Findings" },
   { href: "/actions", label: "Action Center" },
   { href: "/settings", label: "Settings" },
@@ -39,7 +37,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         {children}
       </main>
       <footer className="border-t border-zinc-800/80 py-6 text-center text-xs text-zinc-500">
-        Defensive tooling only — no auto-execution, no scans outside approved folders.
+        Defensive tooling only — static repo and upload analysis, no auto-execution.
       </footer>
     </div>
   );

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getDashboardData } from "@/lib/server/dashboardData";
 import { DashboardResetPanel } from "@/components/dashboard-reset-panel";
+import { DashboardGithubScan } from "@/components/dashboard-github-scan";
 import { DashboardRiskChat } from "@/components/dashboard-risk-chat";
 import {
   formatFindingCategory,
@@ -12,7 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RiskTrendChart } from "@/components/risk-trend-chart";
-import { ShieldCheck, FolderSearch, GitBranch, ChevronDown } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 
 function severityVariant(s: string): "info" | "warn" | "danger" | "default" {
   if (s === "critical" || s === "high") return "danger";
@@ -38,61 +39,75 @@ export default function DashboardPage() {
             Dashboard
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-zinc-400">
-            The <strong className="font-medium text-zinc-300">Risk copilot</strong> below answers like a chat: ask
-            about suspicious files, what patterns might mean, and what to verify. It only sees scanner metadata from
-            your local store — not full source unless a finding quotes a fragment.
+            Clone any <strong className="font-medium text-zinc-300">GitHub</strong> repo from here,
+            or <strong className="font-medium text-zinc-300">attach zips / source files</strong> in Risk copilot (saved
+            as upload sessions with findings). The copilot merges store scans with attachment context — metadata and
+            short descriptions, not full repos unless quoted.
           </p>
-        </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
-          <Button asChild variant="secondary">
-            <Link href="/folder-scanner">
-              <FolderSearch className="size-4" />
-              Folder scan
-            </Link>
-          </Button>
-          <Button asChild>
-            <Link href="/repo-scanner">
-              <GitBranch className="size-4" />
-              Repo scan
-            </Link>
-          </Button>
         </div>
       </div>
 
-      <DashboardRiskChat key={notableCount} notableFindingCount={notableCount} />
+      <DashboardGithubScan />
+
+      <DashboardRiskChat
+        key={notableCount}
+        notableFindingCount={notableCount}
+        copilotRiskPathHints={data.copilotRiskPathHints}
+      />
 
       <details className="group rounded-xl border border-zinc-800 bg-zinc-950/40">
         <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium text-zinc-200 marker:content-none">
           <ChevronDown className="size-4 transition group-open:rotate-180" />
           Charts &amp; numbers
         </summary>
-        <div className="border-t border-zinc-800 px-4 pb-4 pt-2">
-          <div className="grid gap-4 md:grid-cols-3">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-zinc-300">
-                  Approved folders
-                </CardTitle>
-                <ShieldCheck className="size-4 text-emerald-400" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold text-zinc-50">
-                  {data.approvedFolderCount}
-                </div>
-                <p className="text-xs text-zinc-500">
-                  Only these roots can be inventoried or host local repos.
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="md:col-span-2">
-              <CardHeader>
-                <CardTitle className="text-zinc-100">Risk trend</CardTitle>
-                <CardDescription>Recent scan scores (0–100, heuristic)</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <RiskTrendChart data={trendPoints} />
-              </CardContent>
-            </Card>
+        <div className="border-t border-zinc-800 space-y-4 px-4 pb-4 pt-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-zinc-100">Scan risk trend</CardTitle>
+              <CardDescription>
+                Each point is one completed repo or upload scan. The line shows how the{" "}
+                <strong className="font-medium text-zinc-400">heuristic risk score (0–100)</strong> moves over your
+                most recent scans — useful to spot a sudden jump after a dependency or script change. It is{" "}
+                <strong className="font-medium text-zinc-400">not</strong> a malware guarantee; low scores can still
+                miss issues, and high scores can include false positives.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <RiskTrendChart data={trendPoints} />
+            </CardContent>
+          </Card>
+
+          <div
+            className="rounded-xl border border-red-900/55 bg-red-950/25 px-4 py-4 text-sm leading-relaxed text-red-100/95"
+            role="note"
+            aria-label="How harmful code can affect your data"
+          >
+            <p className="font-semibold tracking-tight text-red-200">
+              If malicious or abused code actually runs on your machine (install scripts, running the app, pip/npm
+              install), patterns we flag can correlate with real harm to your data:
+            </p>
+            <ul className="mt-3 list-disc space-y-2 pl-5 text-red-100/90 marker:text-red-400/80">
+              <li>
+                <span className="font-medium text-red-200">Secrets and credentials</span> — code that reads{" "}
+                <code className="rounded bg-red-950/80 px-1 text-xs text-red-100/90">.env</code>, API keys, or tokens
+                and sends them over the network can lead to account takeover and data exfiltration.
+              </li>
+              <li>
+                <span className="font-medium text-red-200">Local files</span> — filesystem access can copy SSH keys,
+                browser profiles, documents, or project data to an attacker.
+              </li>
+              <li>
+                <span className="font-medium text-red-200">Supply-chain installs</span> —{" "}
+                <code className="rounded bg-red-950/80 px-1 text-xs text-red-100/90">postinstall</code> / shell chains
+                can run the moment you install dependencies, before you read the source.
+              </li>
+              <li>
+                <span className="font-medium text-red-200">RepoCheck’s own scope</span> — this app performs{" "}
+                <strong className="text-red-200">static analysis only</strong> here. It does not execute your scanned
+                repo. Risk rises when <strong className="text-red-200">you</strong> run, build, or install that code on
+                a machine that holds sensitive data.
+              </li>
+            </ul>
           </div>
         </div>
       </details>
@@ -101,7 +116,7 @@ export default function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-zinc-100">Recent scans</CardTitle>
-            <CardDescription>Latest sessions from the local JSON store</CardDescription>
+            <CardDescription>Latest repo and upload sessions from the local JSON store</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {data.recentSessions.length === 0 ? (
@@ -118,9 +133,14 @@ export default function DashboardPage() {
                     </p>
                     <p className="text-xs text-zinc-500">{s.id.slice(0, 8)}…</p>
                   </div>
-                  <Button variant="ghost" size="sm" asChild>
-                    <Link href={`/actions?session=${s.id}`}>Open</Link>
-                  </Button>
+                  <div className="flex flex-wrap gap-1">
+                    <Button variant="ghost" size="sm" asChild>
+                      <Link href={`/findings?session=${s.id}`}>Findings</Link>
+                    </Button>
+                    <Button variant="ghost" size="sm" asChild>
+                      <Link href={`/actions?session=${s.id}`}>Actions</Link>
+                    </Button>
+                  </div>
                 </div>
               ))
             )}
@@ -131,7 +151,8 @@ export default function DashboardPage() {
           <summary className="cursor-pointer list-none px-6 py-4 marker:content-none">
             <CardTitle className="text-base text-zinc-100">Structured finding list</CardTitle>
             <CardDescription className="mt-1">
-              Same signals as in the copilot context — medium+ severities, with file paths and static explanations.
+              Same signals as in the copilot context — medium+ severities from repo and upload scans, with paths and
+              static explanations.
             </CardDescription>
           </summary>
           <div className="space-y-4 border-t border-zinc-800 px-6 pb-6 pt-2">

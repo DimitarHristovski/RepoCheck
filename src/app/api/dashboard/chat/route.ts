@@ -16,6 +16,8 @@ const messageSchema = z.object({
 
 const bodySchema = z.object({
   messages: z.array(messageSchema).max(48),
+  /** Static scan summary from uploaded zip/docs (not persisted to store). */
+  attachmentContext: z.string().max(120_000).optional(),
 });
 
 export async function POST(req: Request) {
@@ -38,7 +40,12 @@ export async function POST(req: Request) {
   }
 
   const context = buildRiskChatFindingsContext();
-  const systemText = DASHBOARD_CHAT_SYSTEM + context;
+  let systemText = DASHBOARD_CHAT_SYSTEM + context;
+  if (parsed.data.attachmentContext?.trim()) {
+    systemText +=
+      "\n\n---\nUPLOADED ARTIFACT SCAN (user-supplied zip/files; treat as additional evidence, same restraint rules):\n" +
+      parsed.data.attachmentContext.trim();
+  }
 
   const lcMessages = [
     new SystemMessage(systemText),

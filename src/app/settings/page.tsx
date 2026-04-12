@@ -10,10 +10,6 @@ type Settings = {
   modelProvider: "openai" | "ollama" | "none";
   privacyModeMetadataOnly: boolean;
   localOnlyMode: boolean;
-  scanDepth: number;
-  maxFileSizeMb: number;
-  ignorePatterns: string[];
-  dangerousExtensions: string[];
   promptLogging: boolean;
 };
 
@@ -26,7 +22,6 @@ type RuntimeInfo = {
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [runtime, setRuntime] = useState<RuntimeInfo | null>(null);
-  const [ignoreText, setIgnoreText] = useState("");
   const [resetMsg, setResetMsg] = useState<string | null>(null);
   const [resetBusy, setResetBusy] = useState(false);
 
@@ -40,18 +35,15 @@ export default function SettingsPage() {
         }) => {
           setSettings(d.settings);
           setRuntime(d.runtime ?? null);
-          setIgnoreText((d.settings.ignorePatterns ?? []).join("\n"));
         }
       );
   }, []);
 
-  async function resetStore(scope: "scans" | "folders" | "all") {
+  async function resetStore(scope: "scans" | "all") {
     const ok = window.confirm(
       scope === "all"
-        ? "Remove all approved folders and delete all scan history from the local store?"
-        : scope === "folders"
-          ? "Remove every approved folder from the local store?"
-          : "Delete all scan sessions, findings, and repo clone records from the local store?"
+        ? "Clear all scan history and legacy store entries (including old folder approvals)?"
+        : "Delete all repo scan sessions, findings, and clone records from the local store?"
     );
     if (!ok) return;
     setResetBusy(true);
@@ -66,13 +58,7 @@ export default function SettingsPage() {
         const d = (await res.json()) as { error?: unknown };
         throw new Error(typeof d.error === "string" ? d.error : "Request failed");
       }
-      setResetMsg(
-        scope === "all"
-          ? "Cleared folders and scan history."
-          : scope === "folders"
-            ? "Removed approved folders."
-            : "Cleared scan history."
-      );
+      setResetMsg(scope === "all" ? "Cleared store data (scans + legacy)." : "Cleared scan history.");
     } catch (e) {
       setResetMsg(String(e));
     } finally {
@@ -85,13 +71,7 @@ export default function SettingsPage() {
     const res = await fetch("/api/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...settings,
-        ignorePatterns: ignoreText
-          .split("\n")
-          .map((s) => s.trim())
-          .filter(Boolean),
-      }),
+      body: JSON.stringify({ ...settings }),
     });
     const data = (await res.json()) as {
       settings: Settings;
@@ -198,52 +178,14 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Scan parameters</CardTitle>
-          <CardDescription>Used for folder inventory and repo text-file reads</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>Max depth (nested folders)</Label>
-            <input
-              type="number"
-              className="h-10 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm"
-              value={settings.scanDepth}
-              onChange={(e) =>
-                setSettings({ ...settings, scanDepth: Number(e.target.value) })
-              }
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Max file size (MB) for content hashing / text scan</Label>
-            <input
-              type="number"
-              className="h-10 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm"
-              value={settings.maxFileSizeMb}
-              onChange={(e) =>
-                setSettings({ ...settings, maxFileSizeMb: Number(e.target.value) })
-              }
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Ignore patterns (one per line, substring match)</Label>
-            <textarea
-              className="min-h-24 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
-              value={ignoreText}
-              onChange={(e) => setIgnoreText(e.target.value)}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
       <Card className="border-red-900/40">
         <CardHeader>
           <CardTitle>Local data</CardTitle>
           <CardDescription>
-            Approved folders, scans, and findings live in{" "}
-            <code className="text-zinc-500">data/repocheck-store.json</code>. Clearing here removes them from disk
-            (settings above are kept unless you clear everything — app preferences remain in the same file).
+            Repo scans and findings live in{" "}
+            <code className="text-zinc-500">data/repocheck-store.json</code>. Clearing removes them from disk;
+            saved settings above stay unless you use reset everything (same file; app preferences preserved when
+            possible).
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
@@ -257,20 +199,12 @@ export default function SettingsPage() {
           </Button>
           <Button
             type="button"
-            variant="secondary"
-            disabled={resetBusy}
-            onClick={() => void resetStore("folders")}
-          >
-            Remove all approved folders
-          </Button>
-          <Button
-            type="button"
             variant="outline"
             className="border-red-900/60 text-red-200 hover:bg-red-950/40"
             disabled={resetBusy}
             onClick={() => void resetStore("all")}
           >
-            Clear folders + scan history
+            Reset store (scans + legacy)
           </Button>
           {resetMsg && (
             <p className="w-full text-sm text-zinc-400">{resetMsg}</p>

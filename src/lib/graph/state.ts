@@ -1,26 +1,21 @@
 import { z } from "zod";
 import type { HeuristicFinding } from "@/lib/types/findings";
-import type { InventoryItem } from "@/lib/services/fileScanner.service";
-import type { PlannedAction } from "@/lib/services/organizationPlanner.service";
+import type {
+  PersistedInventoryItem,
+  PersistedPlannedAction,
+} from "@/lib/types/persistedScan";
 
-export const graphRequestTypeSchema = z.enum([
-  "file_organization",
-  "folder_protection",
-  "repo_scan",
-  "mixed",
-]);
+export const graphRequestTypeSchema = z.enum(["repo_scan"]);
 
 export type GraphRequestType = z.infer<typeof graphRequestTypeSchema>;
 
 export const repoCheckStateSchema = z.object({
   requestType: graphRequestTypeSchema,
   userMessage: z.string().optional(),
-  approvedFolderPath: z.string().optional(),
-  approvedRoots: z.array(z.string()),
   repoLocalPath: z.string().optional(),
-  inventory: z.array(z.custom<InventoryItem>()).optional(),
+  inventory: z.array(z.custom<PersistedInventoryItem>()).optional(),
   heuristicFindings: z.array(z.custom<HeuristicFinding>()).optional(),
-  plannedActions: z.array(z.custom<PlannedAction>()).optional(),
+  plannedActions: z.array(z.custom<PersistedPlannedAction>()).optional(),
   riskScore: z
     .object({
       totalScore: z.number(),
