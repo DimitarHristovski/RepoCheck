@@ -20,6 +20,14 @@ const envSchema = z.object({
   REPOCHECK_MODEL_PROVIDER: providerSchema.optional(),
   REPOCHECK_LLM_MODEL: z.string().optional(),
   REPOCHECK_ANALYSIS_ROOT: z.string().optional(),
+  REPOCHECK_GUARDIAN_ENABLED: z.string().optional(),
+  REPOCHECK_GUARDIAN_GITHUB_REPOS: z.string().optional(),
+  REPOCHECK_GUARDIAN_LOCAL_WATCH_DIRS: z.string().optional(),
+  REPOCHECK_GUARDIAN_POLL_MS: z.string().optional(),
+  REPOCHECK_GUARDIAN_ALERT_MIN_SEVERITY: z
+    .enum(["critical", "high", "medium"])
+    .optional(),
+  REPOCHECK_GITHUB_TOKEN: z.string().optional(),
   NODE_ENV: z.enum(["development", "production", "test"]).optional(),
 });
 
@@ -37,7 +45,21 @@ export type AppConfig = Omit<
   analysisRootAbs: string;
   maxScanFileBytes: number;
   maxRepoWalkFiles: number;
+  guardianEnabled: boolean;
+  guardianGithubRepos: string[];
+  guardianLocalWatchDirs: string[];
+  guardianPollMs: number;
+  guardianAlertMinSeverity: "critical" | "high" | "medium";
+  githubToken?: string;
 };
+
+function parseCsv(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
 
 function resolveModelProvider(): z.infer<typeof providerSchema> {
   const raw =
@@ -77,6 +99,18 @@ export function loadConfig(): AppConfig {
   const analysisRootAbs =
     analysisOverride ?? path.join(process.cwd(), ".repocheck-analysis");
   const openAiKey = resolveOpenAiApiKey();
+  const guardianEnabled = ["1", "true", "yes", "on"].includes(
+    String(e.REPOCHECK_GUARDIAN_ENABLED ?? "").trim().toLowerCase()
+  );
+  const guardianGithubRepos = parseCsv(e.REPOCHECK_GUARDIAN_GITHUB_REPOS);
+  const guardianLocalWatchDirs = parseCsv(e.REPOCHECK_GUARDIAN_LOCAL_WATCH_DIRS);
+  const guardianPollMs = Math.max(
+    60_000,
+    Number.parseInt(e.REPOCHECK_GUARDIAN_POLL_MS ?? "300000", 10) || 300_000
+  );
+  const guardianAlertMinSeverity =
+    e.REPOCHECK_GUARDIAN_ALERT_MIN_SEVERITY ?? "high";
+  const githubToken = e.REPOCHECK_GITHUB_TOKEN?.trim() || undefined;
   return {
     ...e,
     OPENAI_API_KEY: openAiKey,
@@ -86,6 +120,12 @@ export function loadConfig(): AppConfig {
     analysisRootAbs,
     maxScanFileBytes: 2 * 1024 * 1024,
     maxRepoWalkFiles: 50_000,
+    guardianEnabled,
+    guardianGithubRepos,
+    guardianLocalWatchDirs,
+    guardianPollMs,
+    guardianAlertMinSeverity,
+    githubToken,
   };
 }
 

@@ -52,6 +52,36 @@ Malicious or abused repositories often target:
 
 Hard caps downgrade verdicts when evidence is **single-factor** or **generated-only** (see `verdict.ts`).
 
+## 4.1 Reviewer operating procedure (required)
+
+The reviewer must operate in this order:
+
+1. Inspect evidence.
+2. Separate handwritten source from generated/build output.
+3. Detect suspicious signals.
+4. Check context (expected app behavior, known-safe destinations).
+5. Correlate multiple signals (avoid single-signal conclusions).
+6. Assign severity using score + combinations + adjustments.
+7. Produce verdict using `CLEAN | LOW_SUSPICIOUS | NEEDS_REVIEW | LIKELY_MALICIOUS | CONFIRMED_MALICIOUS`.
+
+Hard rule reinforcement:
+
+- Never mark repo malicious from `.next`, `dist`, `build`, `vendor-chunks`, or minified files alone.
+- Never classify as malicious solely because of `eval`, `process.env`, `fetch`, or `axios`.
+- Prefer `NEEDS_REVIEW` over false accusation when evidence is ambiguous.
+
+## 4.2 Response formatting rules (required)
+
+Security reviewer answers should be:
+
+- Bullet-point based and clearly sectioned.
+- Explicit about project directories/file groups and trust level.
+- Explicit about "harmful path" (how damage would happen if code executes).
+- Explicit about intent assessment:
+  - intentionally malicious,
+  - suspicious but inconclusive,
+  - likely legitimate behavior.
+
 ---
 
 ## 5. Example output shapes

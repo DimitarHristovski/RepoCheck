@@ -3,12 +3,7 @@ import path from "path";
 import { getConfig } from "@/lib/config";
 import type { HeuristicFinding } from "@/lib/types/findings";
 import {
-  parseDockerfile,
-  parseMakefile,
-  parsePackageJson,
-  parseRequirementsTxt,
-} from "@/lib/services/manifestParser.service";
-import {
+  fileMetadataHeuristics,
   pathSensitiveHeuristics,
   scanTextContent,
 } from "@/lib/services/heuristicsEngine.service";
@@ -111,24 +106,54 @@ export function analyzeLocalRepo(repoRoot: string): {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8)
     .map(([k]) => k);
+  const suspiciousOnlyCategories = new Set([
+    "shell_execution",
+    "secret_harvest",
+    "miner",
+    "workflow_risk",
+    "persistence",
+    "obfuscation",
+    "hidden_binary",
+    "archive_anomaly",
+    "type_mismatch",
+  ]);
+  const pushSuspicious = (items: HeuristicFinding[]) => {
+    for (const item of items) {
+      if (suspiciousOnlyCategories.has(item.category)) {
+        findings.push(item);
+      }
+    }
+  };
 
   for (const rel of relPaths) {
-    findings.push(...pathSensitiveHeuristics(rel));
     const abs = path.join(repoRoot, rel);
-    const lower = rel.toLowerCase().replace(/\\/g, "/");
+    const top = rel.split(path.sep)[0] ?? rel;
+    let st: fs.Stats | null = null;
+    try {
+      st = fs.lstatSync(abs);
+    } catch {
+      st = null;
+    }
 
-    if (lower.endsWith("package.json")) {
-      findings.push(...parsePackageJson(abs, rel));
+    if (st) {
+      pushSuspicious(
+        fileMetadataHeuristics({
+          relativePath: rel,
+          extension: path.extname(rel),
+          sizeBytes: st.size,
+          isHidden: path.basename(rel).startsWith("."),
+          isSymlink: st.isSymbolicLink(),
+          category: top,
+          cfg: {
+            dangerousExtensions: [".exe", ".scr", ".bat", ".cmd", ".ps1", ".vbs", ".jar", ".sh"],
+            doubleExtensionHints: [".pdf.exe", ".docx.exe", ".png.js", ".txt.bat"],
+          },
+        })
+      );
     }
-    if (lower.endsWith("requirements.txt")) {
-      findings.push(...parseRequirementsTxt(abs, rel));
-    }
-    if (path.basename(rel).toLowerCase() === "dockerfile") {
-      findings.push(...parseDockerfile(abs, rel));
-    }
-    if (path.basename(rel).toLowerCase() === "makefile") {
-      findings.push(...parseMakefile(abs, rel));
-    }
+
+    // Path-only checks are still useful for obvious suspicious artifacts.
+    pushSuspicious(pathSensitiveHeuristics(rel));
 
     if (!isProbablyTextFile(rel)) continue;
     let raw: string;
@@ -137,26 +162,12 @@ export function analyzeLocalRepo(repoRoot: string): {
     } catch {
       continue;
     }
-    findings.push(
-      ...scanTextContent(rel, raw, path.extname(rel), {
+    pushSuspicious(
+      scanTextContent(rel, raw, path.extname(rel), {
         dangerousExtensions: [],
         doubleExtensionHints: [".pdf.exe", ".docx.exe", ".png.js", ".txt.bat"],
       })
     );
-  }
-
-  const readme = relPaths.some(
-    (r) => /^readme\.md$/i.test(path.basename(r)) || /^readme$/i.test(r)
-  );
-  if (!readme) {
-    findings.push({
-      severity: "info",
-      category: "default",
-      title: "No README found",
-      description:
-        "Missing README is weak trust signal only; many benign snippets omit it.",
-      evidence: {},
-    });
   }
 
   return {

@@ -8,21 +8,29 @@ const UA = "RepoCheck/1.0 (public GitHub archive scan)";
 /** Optional cap when GitHub sends Content-Length (best-effort). */
 const MAX_ZIP_BYTES = 120 * 1024 * 1024;
 
+function githubHeaders(token?: string): Record<string, string> {
+  return {
+    Accept: "application/vnd.github+json",
+    "User-Agent": UA,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
 export async function fetchGithubDefaultBranch(
   owner: string,
-  repo: string
+  repo: string,
+  token?: string
 ): Promise<string> {
   const res = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
-    headers: {
-      Accept: "application/vnd.github+json",
-      "User-Agent": UA,
-    },
+    headers: githubHeaders(token),
     cache: "no-store",
   });
 
   if (res.status === 404) {
     throw new Error(
-      "Repository not found. Use a public github.com repo name, or it may be private (not supported here)."
+      token
+        ? "Repository not found or token has no access."
+        : "Repository not found. It may be private; add a GitHub token in Settings."
     );
   }
   if (res.status === 403) {
@@ -30,7 +38,9 @@ export async function fetchGithubDefaultBranch(
     throw new Error(
       j.message?.includes("rate limit")
         ? "GitHub API rate limit exceeded. Try again in a few minutes."
-        : "GitHub refused the request (403). Public repos only."
+        : token
+          ? "GitHub refused access (403). Check token scopes/repo access."
+          : "GitHub refused the request (403). Private repos require a token in Settings."
     );
   }
   if (!res.ok) {
@@ -41,31 +51,87 @@ export async function fetchGithubDefaultBranch(
   return j.default_branch ?? "main";
 }
 
+export async function listGithubBranches(input: {
+  owner: string;
+  repo: string;
+  token?: string;
+  limit?: number;
+}): Promise<{ branches: string[]; defaultBranch: string }> {
+  const { owner, repo, token } = input;
+  const perPage = Math.min(100, Math.max(1, input.limit ?? 100));
+  const res = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/branches?per_page=${perPage}`,
+    {
+      headers: githubHeaders(token),
+      cache: "no-store",
+    }
+  );
+  if (res.status === 404) {
+    throw new Error(
+      token
+        ? "Repository not found or token has no access."
+        : "Repository not found. It may be private; add a GitHub token in Settings."
+    );
+  }
+  if (res.status === 401) {
+    throw new Error("GitHub token invalid or expired. Update token in Settings.");
+  }
+  if (res.status === 403) {
+    const j = (await res.json().catch(() => ({}))) as { message?: string };
+    throw new Error(
+      j.message?.includes("rate limit")
+        ? "GitHub API rate limit exceeded. Try again in a few minutes."
+        : token
+          ? "GitHub refused access (403). Check token scopes/repo access."
+          : "GitHub refused the request (403). Private repos require a token in Settings."
+    );
+  }
+  if (!res.ok) {
+    throw new Error(`GitHub branches API error (${res.status}).`);
+  }
+  const rows = (await res.json()) as Array<{ name?: string }>;
+  const branches = rows
+    .map((x) => x.name?.trim() ?? "")
+    .filter(Boolean);
+  const defaultBranch = await fetchGithubDefaultBranch(owner, repo, token);
+  return { branches, defaultBranch };
+}
+
 /**
- * Download public repo as ZIP (no git), extract under analysisRoot, return path to repo root folder.
+ * Download repo as ZIP (no git), extract under analysisRoot, return path to repo root folder.
+ * Uses GitHub API zipball endpoint so private repos work with token auth.
  */
-export async function downloadPublicGithubRepoArchive(input: {
+export async function downloadGithubRepoArchive(input: {
   owner: string;
   repo: string;
   branch: string;
   analysisRoot: string;
+  token?: string;
 }): Promise<{ localPath: string }> {
-  const { owner, repo, branch, analysisRoot } = input;
-  const zipUrl = `https://github.com/${owner}/${repo}/archive/refs/heads/${encodeURIComponent(branch)}.zip`;
+  const { owner, repo, branch, analysisRoot, token } = input;
+  const zipUrl = `https://api.github.com/repos/${owner}/${repo}/zipball/${encodeURIComponent(branch)}`;
 
   const res = await fetch(zipUrl, {
-    headers: { "User-Agent": UA, Accept: "application/zip" },
+    headers: {
+      ...githubHeaders(token),
+      Accept: "application/vnd.github+json",
+    },
     redirect: "follow",
     cache: "no-store",
   });
 
   if (res.status === 404) {
     throw new Error(
-      `No ZIP for branch "${branch}". Pick another branch or check the repo is public.`
+      token
+        ? `No archive for branch "${branch}" or no token access.`
+        : `No archive for branch "${branch}". If repo is private, add a token in Settings.`
     );
   }
+  if (res.status === 401) {
+    throw new Error("GitHub token invalid or expired. Update token in Settings.");
+  }
   if (!res.ok) {
-    throw new Error(`GitHub download failed (${res.status}). Public github.com repos only.`);
+    throw new Error(`GitHub download failed (${res.status}). Check repo visibility and token access.`);
   }
 
   const cl = res.headers.get("content-length");

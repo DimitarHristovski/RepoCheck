@@ -43,10 +43,9 @@ export function DashboardResetPanel() {
   return (
     <Card className="border-zinc-800">
       <CardHeader>
-        <CardTitle className="text-zinc-100">Dashboard data on this device</CardTitle>
+        <CardTitle className="text-zinc-100">Data tools</CardTitle>
         <CardDescription>
-          Data lives in <code className="text-zinc-500">data/repocheck-store.json</code>. Reset updates the file and
-          refreshes this page.
+          Clear local scan history when needed.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
@@ -56,7 +55,7 @@ export function DashboardResetPanel() {
           disabled={busy}
           onClick={() => void reset("scans")}
         >
-          Clear scans &amp; findings
+          Clear history
         </Button>
         <Button
           type="button"
@@ -65,7 +64,7 @@ export function DashboardResetPanel() {
           disabled={busy}
           onClick={() => void reset("all")}
         >
-          Reset everything in store
+          Reset all local data
         </Button>
         <Link
           href="/settings"

@@ -4,7 +4,7 @@ import path from "path";
 import { repoScanSchema } from "@/lib/validations/api";
 import { analyzeLocalRepo } from "@/lib/services/repoScanner.service";
 import {
-  downloadPublicGithubRepoArchive,
+  downloadGithubRepoArchive,
   fetchGithubDefaultBranch,
 } from "@/lib/services/githubPublicArchive.service";
 import {
@@ -17,6 +17,7 @@ import {
   normalizeGithubRepoUrl,
   parseGithubOwnerRepoFromWebUrl,
 } from "@/lib/gitHubCloneUrl";
+import { getAppSettings } from "@/lib/settingsStore";
 
 export const runtime = "nodejs";
 
@@ -28,6 +29,8 @@ export async function POST(req: Request) {
   }
 
   const cfg = getConfig();
+  const settingsToken = getAppSettings().guardian.githubToken?.trim() || undefined;
+  const githubToken = settingsToken ?? cfg.githubToken;
   let localPath: string;
   let sourceRef: string;
   let sourceType: "local" | "archive";
@@ -38,7 +41,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           error:
-            "Invalid URL. Use https://github.com/owner/repo, owner/repo, or git@github.com:owner/repo (public only).",
+            "Invalid URL. Use https://github.com/owner/repo, owner/repo, or git@github.com:owner/repo.",
         },
         { status: 400 }
       );
@@ -49,7 +52,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           error:
-            "Only public github.com repositories are supported. Do not put tokens or passwords in the URL.",
+            "Only github.com repository URLs are supported. Do not put tokens or passwords in the URL.",
         },
         { status: 400 }
       );
@@ -59,18 +62,19 @@ export async function POST(req: Request) {
     let branch: string;
     try {
       branch =
-        branchInput ?? (await fetchGithubDefaultBranch(gh.owner, gh.repo));
+        branchInput ?? (await fetchGithubDefaultBranch(gh.owner, gh.repo, githubToken));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       return NextResponse.json({ error: msg }, { status: 400 });
     }
 
     try {
-      const { localPath: extracted } = await downloadPublicGithubRepoArchive({
+      const { localPath: extracted } = await downloadGithubRepoArchive({
         owner: gh.owner,
         repo: gh.repo,
         branch,
         analysisRoot: cfg.analysisRootAbs,
+        token: githubToken,
       });
       localPath = extracted;
     } catch (e) {

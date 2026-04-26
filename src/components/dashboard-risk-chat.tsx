@@ -18,8 +18,6 @@ function genId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-const STATIC_HINT_ID = "static-hint-empty";
-
 const OVERVIEW_PROMPT = `Using your auditor methodology (steps 1–7), produce a structured assessment of the FINDINGS CONTEXT below.
 
 Follow STEP 7 output format: Summary (verdict + confidence), Key Findings (paths, signal types, why it matters), Context Analysis (normal vs suspicious), Final Reasoning.
@@ -115,16 +113,7 @@ export function DashboardRiskChat(props: {
     bootstrapOnce.current = true;
 
     if (notableFindingCount === 0) {
-      setMessages([
-        {
-          id: STATIC_HINT_ID,
-          role: "assistant",
-          content:
-            "No medium+ findings in your local store yet.\n\n" +
-            "• Scan a GitHub repo above, or attach zips / source files below (saved as an upload session).\n" +
-            "• Open Findings or Action Center from Recent scans on the dashboard.",
-        },
-      ]);
+      setMessages([]);
       return;
     }
 
@@ -213,7 +202,6 @@ export function DashboardRiskChat(props: {
         : "";
 
       setMessages((prev) => {
-        const cleared = prev.filter((m) => m.id !== STATIC_HINT_ID);
         const userLine: Msg = {
           id: genId(),
           role: "user",
@@ -221,13 +209,13 @@ export function DashboardRiskChat(props: {
         };
         if (result.ok) {
           return [
-            ...cleared,
+            ...prev,
             userLine,
             { id: genId(), role: "assistant", content: result.reply },
           ];
         }
         return [
-          ...cleared,
+          ...prev,
           userLine,
           { id: genId(), role: "assistant", content: result.message },
         ];
@@ -247,12 +235,12 @@ export function DashboardRiskChat(props: {
   }
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-xl">
-      <div className="border-b border-zinc-800 px-4 py-3">
+    <div className="flex min-h-[24rem] flex-col bg-transparent">
+      <div className="border-b border-zinc-800/80 px-2 py-3 sm:px-3">
         <h2 className="text-lg font-semibold text-zinc-50">Risk copilot</h2>
         <p className="text-xs text-zinc-500">
-          Chat with store findings plus optional uploads: .zip archives or text-like source files (static heuristics
-          only). Not a malware verdict. Paths that match medium+ scanner hits are underlined (
+          Ask questions about current findings and optional uploaded files (static analysis only). Paths with medium+
+          scanner hits are underlined (
           <span className="text-red-300/90">critical</span>,{" "}
           <span className="text-orange-200/90">high</span>,{" "}
           <span className="text-amber-200/80">medium</span>).
@@ -283,7 +271,7 @@ export function DashboardRiskChat(props: {
         )}
       </div>
 
-      <div className="min-h-[min(420px,50vh)] max-h-[min(560px,60vh)] space-y-4 overflow-y-auto px-4 py-4">
+      <div className="min-h-[20rem] flex-1 space-y-4 px-1 py-3 sm:px-2 sm:py-4">
         <CopilotDirectoryMap
           root={pathTreeRoot}
           pathCount={copilotRiskPathHints.length}
@@ -293,8 +281,8 @@ export function DashboardRiskChat(props: {
             key={m.id}
             className={
               m.role === "user"
-                ? "ml-auto max-w-[92%] rounded-2xl border border-emerald-900/40 bg-emerald-950/35 px-4 py-3 text-sm text-zinc-100"
-                : "mr-auto max-w-[92%] rounded-2xl border border-zinc-700/80 bg-zinc-900/80 px-4 py-3 text-sm text-zinc-200"
+                ? "ml-auto max-w-[96%] rounded-3xl border border-emerald-900/50 bg-emerald-950/40 px-3 py-3 text-sm text-zinc-100 sm:max-w-[90%] sm:px-4"
+                : "mr-auto max-w-[96%] rounded-3xl border border-zinc-700/70 bg-zinc-900 px-3 py-3 text-sm text-zinc-200 sm:max-w-[90%] sm:px-4"
             }
           >
             <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
@@ -312,7 +300,7 @@ export function DashboardRiskChat(props: {
         <div ref={bottomRef} />
       </div>
 
-      <div className="border-t border-zinc-800 p-3 space-y-2">
+      <div className="border-t border-zinc-800/80 bg-zinc-950/30 p-2 sm:p-3">
         <div className="flex flex-wrap items-center gap-2">
           <input
             ref={fileRef}
@@ -332,13 +320,13 @@ export function DashboardRiskChat(props: {
             <Paperclip className="size-4" />
             Attach zip / files
           </Button>
-          <span className="text-[10px] text-zinc-600">
-            Max 6 files per request. PDFs not parsed — use zip with source.
+          <span className="text-[10px] text-zinc-500">
+            Max 6 files. PDFs not parsed.
           </span>
         </div>
-        <div className="flex gap-2">
+        <div className="mt-2 flex items-end gap-2">
           <textarea
-            className="min-h-[44px] flex-1 resize-none rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-emerald-900/50"
+            className="min-h-[44px] flex-1 resize-none rounded-2xl border border-zinc-700/80 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-900/50"
             rows={2}
             placeholder="Ask about a file, severity, or what to verify…"
             value={input}
@@ -353,7 +341,7 @@ export function DashboardRiskChat(props: {
           />
           <Button
             type="button"
-            className="shrink-0 self-end"
+            className="shrink-0 rounded-2xl"
             disabled={loading || uploadBusy || !input.trim()}
             onClick={() => void handleSend()}
           >

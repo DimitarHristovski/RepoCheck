@@ -13,9 +13,43 @@ export function DashboardGithubScan() {
   const router = useRouter();
   const [url, setUrl] = useState("");
   const [branch, setBranch] = useState("");
+  const [branches, setBranches] = useState<string[]>([]);
+  const [branchesBusy, setBranchesBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+
+  async function loadBranches() {
+    const raw = url.trim();
+    if (!raw) return;
+    setBranchesBusy(true);
+    try {
+      const res = await fetch("/api/github/branches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repo: raw }),
+      });
+      const data = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        branches?: string[];
+        defaultBranch?: string;
+      };
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error ?? "Could not load branches.");
+      }
+      const list = data.branches ?? [];
+      setBranches(list);
+      if (!branch.trim() && data.defaultBranch) {
+        setBranch(data.defaultBranch);
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+      setBranches([]);
+    } finally {
+      setBranchesBusy(false);
+    }
+  }
 
   async function runScan() {
     setErr(null);
@@ -59,45 +93,82 @@ export function DashboardGithubScan() {
   }
 
   return (
-    <Card className="border-zinc-800 bg-zinc-950/50">
-      <CardHeader className="pb-2">
+    <Card className="border-zinc-800/80 bg-zinc-950/60">
+      <CardHeader className="pb-1">
         <CardTitle className="flex items-center gap-2 text-base text-zinc-100">
           <Github className="size-5 text-zinc-300" />
-          Scan GitHub repo directly
+          Quick repo scan
         </CardTitle>
         <CardDescription>
-          <strong className="font-medium text-zinc-400">Public github.com repos only</strong> — no git install, no
-          cloning. RepoCheck downloads GitHub&apos;s ZIP for the branch (default from the API if you leave branch
-          empty), extracts under your analysis directory, and runs static heuristics. Private repos and tokens in URLs
-          are not supported.
+          Paste a GitHub repo and run a one-time scan. Works with private repos when token is set in Settings.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <div className="min-w-0 flex-1 space-y-2">
-            <Label htmlFor="gh-url">Repository URL</Label>
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Step 1</p>
+          <div className="mt-2 min-w-0 space-y-2">
+            <Label htmlFor="gh-url">Repository</Label>
             <Input
               id="gh-url"
               name="repocheck-github-url"
               autoComplete="off"
-              placeholder="e.g. vercel/next.js or https://github.com/org/repo"
+              placeholder="owner/repo or https://github.com/org/repo"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
+              onBlur={() => void loadBranches()}
               onKeyDown={(e) => {
-                if (e.key === "Enter") void runScan();
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void loadBranches();
+                }
               }}
             />
+            <p className="text-xs text-zinc-500">
+              Examples: <code>vercel/next.js</code>, <code>https://github.com/org/repo</code>
+            </p>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="mt-1"
+              disabled={branchesBusy}
+              onClick={() => void loadBranches()}
+            >
+              {branchesBusy ? "Loading branches…" : "Load branches"}
+            </Button>
           </div>
-          <div className="w-full space-y-2 sm:w-40">
+        </div>
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Step 2</p>
+          <div className="mt-2 w-full space-y-2">
             <Label htmlFor="gh-branch">Branch (optional)</Label>
             <Input
               id="gh-branch"
               autoComplete="off"
-              placeholder="main"
+              placeholder="Leave empty to auto-detect default branch"
               value={branch}
               onChange={(e) => setBranch(e.target.value)}
             />
+            {branches.length > 0 && (
+              <div className="space-y-1">
+                <Label htmlFor="gh-branch-select">Or choose detected branch</Label>
+                <select
+                  id="gh-branch-select"
+                  className="h-10 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm"
+                  value={branch}
+                  onChange={(e) => setBranch(e.target.value)}
+                >
+                  {branches.map((b) => (
+                    <option key={b} value={b}>
+                      {b}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <Button
             type="button"
             className="inline-flex w-full items-center justify-center gap-2 sm:w-auto"
@@ -107,12 +178,13 @@ export function DashboardGithubScan() {
             {busy ? (
               <>
                 <Loader2 className="size-4 animate-spin" />
-                Downloading…
+                Scanning…
               </>
             ) : (
-              "Scan public repo"
+              "Run scan now"
             )}
           </Button>
+          <p className="text-xs text-zinc-500">No code execution. Static analysis only.</p>
         </div>
         {err && <p className="text-sm text-red-400">{err}</p>}
         {ok && <p className="text-sm text-emerald-400/90">{ok}</p>}
