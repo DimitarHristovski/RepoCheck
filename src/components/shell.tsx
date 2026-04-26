@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { EntrySplash } from "@/components/entry-splash";
 
 const links = [
   { href: "/", label: "Dashboard" },
@@ -13,6 +14,7 @@ const links = [
 export function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col">
+      <EntrySplash />
       <header className="sticky top-0 z-40 border-b border-zinc-800/80 bg-zinc-950/90 backdrop-blur-md">
         <div className="flex h-14 w-full items-center gap-6 px-4 sm:px-6">
           <Link href="/" className="flex items-center gap-2 font-semibold text-zinc-100">

@@ -18,6 +18,19 @@ function genId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+const RESPONSE_STYLE_INSTRUCTIONS = `Write responses in a clean ChatGPT-like structure with numbered sections and readable bullets.
+
+Formatting constraints:
+• Do NOT use markdown headings (no #, ##, ###).
+• Do NOT use dash bullets (-).
+• Use numbered sections like 1) Verdict, 2) Confidence, 3) Why, 4) Key Findings, 5) False Positive Notes, 6) If Harmful: What NOT to Do, 7) Recommended Action.
+• For bullets, use "•" or "1." style lists.
+• Keep language concise, evidence-based, and easy to scan.
+
+Safety guidance rule:
+• Always include section 6 with practical "do not" actions when suspicious behavior exists.
+• If verdict is CLEAN, include a short precaution note in section 6 and clearly say there is no confirmed harmful behavior.`;
+
 const OVERVIEW_PROMPT = `Using your auditor methodology (steps 1–7), produce a structured assessment of the FINDINGS CONTEXT below.
 
 Follow STEP 7 output format: Summary (verdict + confidence), Key Findings (paths, signal types, why it matters), Context Analysis (normal vs suspicious), Final Reasoning.
@@ -118,7 +131,10 @@ export function DashboardRiskChat(props: {
     }
 
     void (async () => {
-      const result = await callChat([{ role: "user", content: OVERVIEW_PROMPT }], null);
+      const result = await callChat(
+        [{ role: "user", content: `${OVERVIEW_PROMPT}\n\n${RESPONSE_STYLE_INSTRUCTIONS}` }],
+        null
+      );
       if (result.ok) {
         setMessages([{ id: genId(), role: "assistant", content: result.reply }]);
       } else {
@@ -192,7 +208,7 @@ export function DashboardRiskChat(props: {
       setAttachmentLabel(names || "upload");
 
       const result = await callChat(
-        [{ role: "user", content: UPLOAD_OVERVIEW_PROMPT }],
+        [{ role: "user", content: `${UPLOAD_OVERVIEW_PROMPT}\n\n${RESPONSE_STYLE_INSTRUCTIONS}` }],
         block
       );
 

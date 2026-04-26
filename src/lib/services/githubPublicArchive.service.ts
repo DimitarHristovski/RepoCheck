@@ -5,8 +5,6 @@ import { logger } from "@/lib/logger";
 
 const UA = "RepoCheck/1.0 (public GitHub archive scan)";
 
-/** Optional cap when GitHub sends Content-Length (best-effort). */
-const MAX_ZIP_BYTES = 120 * 1024 * 1024;
 
 function githubHeaders(token?: string): Record<string, string> {
   return {
@@ -134,17 +132,7 @@ export async function downloadGithubRepoArchive(input: {
     throw new Error(`GitHub download failed (${res.status}). Check repo visibility and token access.`);
   }
 
-  const cl = res.headers.get("content-length");
-  if (cl && Number(cl) > MAX_ZIP_BYTES) {
-    throw new Error(
-      `Archive is larger than ${Math.round(MAX_ZIP_BYTES / (1024 * 1024))} MB — skip or use a smaller checkout.`
-    );
-  }
-
   const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.length > MAX_ZIP_BYTES) {
-    throw new Error("Downloaded archive exceeds the size limit for scanning.");
-  }
 
   fs.mkdirSync(input.analysisRoot, { recursive: true });
   const tmp = fs.mkdtempSync(path.join(analysisRoot, "gh-archive-"));
