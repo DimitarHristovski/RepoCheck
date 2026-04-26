@@ -8,8 +8,7 @@ const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono"
 
 export const metadata: Metadata = {
   title: "RepoCheck",
-  description:
-    "Local-first security assistant for folder organization and repository inspection",
+  description: "Local-first static analysis for Git repositories and uploaded archives",
 };
 
 export default function RootLayout({

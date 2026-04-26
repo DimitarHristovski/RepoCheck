@@ -8,16 +8,23 @@ export const appSettingsSchema = z.object({
   modelProvider: z.enum(["openai", "ollama", "none"]).default("none"),
   privacyModeMetadataOnly: z.boolean().default(true),
   localOnlyMode: z.boolean().default(true),
-  scanDepth: z.number().int().min(1).max(128).default(32),
-  maxFileSizeMb: z.number().min(0.1).max(500).default(2),
-  ignorePatterns: z.array(z.string()).default(["node_modules", ".git"]),
-  dangerousExtensions: z
-    .array(z.string())
-    .default([".exe", ".scr", ".bat", ".cmd", ".ps1"]),
   promptLogging: z.boolean().default(false),
+  guardian: z
+    .object({
+      enabled: z.boolean().default(true),
+      githubRepos: z.array(z.string()).default([]),
+      localWatchDirs: z.array(z.string()).default([]),
+      pollMs: z.number().int().min(60_000).max(86_400_000).default(300_000),
+      alertMinSeverity: z.enum(["critical", "high", "medium"]).default("high"),
+      githubToken: z.string().max(512).default(""),
+    })
+    .default({}),
 });
 
 export type AppSettings = z.infer<typeof appSettingsSchema>;
+export type AppSettingsPatch = Partial<Omit<AppSettings, "guardian">> & {
+  guardian?: Partial<AppSettings["guardian"]>;
+};
 
 const defaults: AppSettings = appSettingsSchema.parse({});
 
@@ -28,9 +35,16 @@ export function getAppSettings(): AppSettings {
   return parsed.success ? parsed.data : defaults;
 }
 
-export function setAppSettings(patch: Partial<AppSettings>): AppSettings {
+export function setAppSettings(patch: AppSettingsPatch): AppSettings {
   const current = getAppSettings();
-  const next = appSettingsSchema.parse({ ...current, ...patch });
+  const next = appSettingsSchema.parse({
+    ...current,
+    ...patch,
+    guardian: {
+      ...current.guardian,
+      ...(patch.guardian ?? {}),
+    },
+  });
   writeAppSettingsBlob(next);
   return next;
 }

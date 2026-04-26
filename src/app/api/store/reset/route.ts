@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { clearLocalData } from "@/lib/store/repository";
 
@@ -15,5 +16,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
   clearLocalData(parsed.data.scope);
+  revalidatePath("/", "page");
+  revalidatePath("/findings");
+  revalidatePath("/actions");
+  revalidatePath("/settings");
   return NextResponse.json({ ok: true });
 }

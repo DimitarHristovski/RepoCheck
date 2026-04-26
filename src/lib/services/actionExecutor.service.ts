@@ -1,19 +1,20 @@
 import fs from "fs";
 import path from "path";
-import { assertPathUnderApprovedRoots } from "@/lib/security/pathGuard";
 import { writeAuditLog } from "@/lib/services/auditLog.service";
 
 /**
- * Executes only reversible moves strictly inside approved roots. No deletes.
+ * Executes reversible moves (e.g. from legacy planned actions). Paths must resolve to real files.
  */
 export function executeMoveWithinRoot(input: {
   fromAbsolute: string;
   toAbsolute: string;
-  approvedRoots: string[];
 }): { ok: true } | { ok: false; error: string } {
   try {
-    const from = assertPathUnderApprovedRoots(input.fromAbsolute, input.approvedRoots);
-    const to = assertPathUnderApprovedRoots(input.toAbsolute, input.approvedRoots);
+    const from = path.resolve(input.fromAbsolute);
+    const to = path.resolve(input.toAbsolute);
+    if (!fs.existsSync(from)) {
+      return { ok: false, error: `Source does not exist: ${from}` };
+    }
     const toDir = path.dirname(to);
     fs.mkdirSync(toDir, { recursive: true });
     fs.renameSync(from, to);

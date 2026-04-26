@@ -3,10 +3,17 @@ import { settingsPatchSchema } from "@/lib/validations/api";
 import { getAppSettings, setAppSettings } from "@/lib/settingsStore";
 import { writeAuditLog } from "@/lib/services/auditLog.service";
 import { getConfig, resolveOpenAiApiKey } from "@/lib/config";
+import {
+  getGuardianStatus,
+  restartGuardianService,
+  startGuardianService,
+} from "@/lib/services/guardian.service";
 
 export const runtime = "nodejs";
 
 export function GET() {
+  startGuardianService();
+  const guardian = getGuardianStatus();
   const cfg = getConfig();
   return NextResponse.json({
     settings: getAppSettings(),
@@ -15,6 +22,7 @@ export function GET() {
       hasOpenAiKey: Boolean(resolveOpenAiApiKey()),
       hasOpenAiBaseUrl: Boolean(process.env.OPENAI_BASE_URL),
     },
+    guardian,
   });
 }
 
@@ -25,6 +33,7 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
   const next = setAppSettings(parsed.data);
+  restartGuardianService();
   writeAuditLog({ actor: "user", action: "settings_update" });
   const cfg = getConfig();
   return NextResponse.json({
@@ -34,5 +43,6 @@ export async function PATCH(req: Request) {
       hasOpenAiKey: Boolean(resolveOpenAiApiKey()),
       hasOpenAiBaseUrl: Boolean(process.env.OPENAI_BASE_URL),
     },
+    guardian: getGuardianStatus(),
   });
 }

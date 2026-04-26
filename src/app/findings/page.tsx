@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -84,13 +85,43 @@ export default function FindingsPage() {
     );
   }
 
+  const groupedByPath = useMemo(() => {
+    const m = new Map<string, Finding[]>();
+    for (const f of findings) {
+      const key = f.filePath?.trim() || "(no path)";
+      if (!m.has(key)) m.set(key, []);
+      m.get(key)!.push(f);
+    }
+    return [...m.entries()].sort(([a], [b]) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" })
+    );
+  }, [findings]);
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-zinc-50">Findings Explorer</h1>
         <p className="mt-1 text-sm text-zinc-400">
-          Evidence-first list with manual review state. Use filters to narrow noise.
+          Evidence-first list with manual review state. Use filters to narrow noise. Local scans, public GitHub ZIP
+          scans, and dashboard uploads all persist findings here.
         </p>
+        {!sessionId && (
+          <p className="mt-2 text-xs text-zinc-500">
+            Showing recent findings across sessions. Filter by session from{" "}
+            <Link href="/" className="text-emerald-400 underline">
+              Dashboard
+            </Link>{" "}
+            → Recent scans, or{" "}
+            <Link href="/actions" className="text-emerald-400 underline">
+              Action Center
+            </Link>
+            , or{" "}
+            <Link href="/sessions" className="text-emerald-400 underline">
+              Sessions
+            </Link>
+            .
+          </p>
+        )}
       </div>
 
       {sessionId && (llmFromSession?.explanation || llmFromSession?.error) ? (
@@ -113,7 +144,7 @@ export default function FindingsPage() {
         ))}
       </div>
 
-      <div className="grid gap-4">
+      <div className="space-y-8">
         {findings.length === 0 ? (
           <Card>
             <CardContent className="py-10 text-center text-sm text-zinc-500">
@@ -121,33 +152,48 @@ export default function FindingsPage() {
             </CardContent>
           </Card>
         ) : (
-          findings.map((f) => (
-            <Card key={f.id}>
-              <CardHeader className="flex flex-row items-start justify-between gap-4">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant={f.severity === "high" || f.severity === "critical" ? "danger" : "default"}>
-                      {f.severity}
-                    </Badge>
-                    {f.reviewed && <Badge variant="success">Reviewed</Badge>}
-                    <CardTitle className="text-base text-zinc-100">{f.title}</CardTitle>
-                  </div>
-                  <CardDescription className="mt-2 text-zinc-400">
-                    {f.filePath && <span className="font-mono text-xs">{f.filePath}</span>}
-                  </CardDescription>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void markReviewed(f.id, !f.reviewed)}
-                >
-                  {f.reviewed ? "Unmark" : "Mark reviewed"}
-                </Button>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-zinc-300">{f.description}</p>
-              </CardContent>
-            </Card>
+          groupedByPath.map(([pathKey, list]) => (
+            <section key={pathKey} className="space-y-3">
+              <h2 className="border-b border-zinc-800 pb-1 font-mono text-xs font-medium tracking-tight text-zinc-400">
+                {pathKey}
+                <span className="ml-2 font-sans text-zinc-600">({list.length})</span>
+              </h2>
+              <div className="grid gap-3">
+                {list.map((f) => (
+                  <Card key={f.id}>
+                    <CardHeader className="flex flex-row items-start justify-between gap-4">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge
+                            variant={
+                              f.severity === "high" || f.severity === "critical"
+                                ? "danger"
+                                : f.severity === "medium"
+                                  ? "warn"
+                                  : "default"
+                            }
+                          >
+                            {f.severity}
+                          </Badge>
+                          {f.reviewed && <Badge variant="success">Reviewed</Badge>}
+                          <CardTitle className="text-base text-zinc-100">{f.title}</CardTitle>
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void markReviewed(f.id, !f.reviewed)}
+                      >
+                        {f.reviewed ? "Unmark" : "Mark reviewed"}
+                      </Button>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-sm text-zinc-300">{f.description}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </section>
           ))
         )}
       </div>
