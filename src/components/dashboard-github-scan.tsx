@@ -79,11 +79,17 @@ export function DashboardGithubScan() {
           typeof data.error === "string" ? data.error : JSON.stringify(data.error ?? res.statusText)
         );
       }
+      const sid = data.sessionId ?? "";
       setOk(
-        `Scan complete (${data.findingsCount ?? 0} signals). Session ${(data.sessionId ?? "").slice(0, 8)}… — refreshing copilot context.`
+        sid
+          ? `Scan complete (${data.findingsCount ?? 0} signals). Opening Risk Copilot…`
+          : `Scan complete (${data.findingsCount ?? 0} signals).`
       );
       setUrl("");
       setBranch("");
+      if (sid) {
+        router.push(`/?copilotSession=${encodeURIComponent(sid)}`);
+      }
       router.refresh();
     } catch (e) {
       setErr(String(e));

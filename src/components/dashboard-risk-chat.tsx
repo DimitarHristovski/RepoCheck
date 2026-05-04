@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { RiskCopilotMessageBody } from "@/components/risk-copilot-message-body";
-import type { CopilotRiskPathHint, CopilotScanSource } from "@/lib/store/repository";
+import type { CopilotRiskPathHint } from "@/lib/store/repository";
 import { Send, Loader2, Paperclip, X } from "lucide-react";
 import { buildPathTreeFromHints } from "@/lib/dashboard/pathTree";
 import { CopilotDirectoryMap } from "@/components/copilot-directory-map";
@@ -31,14 +31,6 @@ Formatting constraints:
 Safety guidance rule:
 • Always include section 6 with practical "do not" actions when suspicious behavior exists.
 • If verdict is CLEAN, include a short precaution note in section 6 and clearly say there is no confirmed harmful behavior.`;
-
-const OVERVIEW_PROMPT = `Using your auditor methodology (steps 1–7), produce a structured assessment of the FINDINGS CONTEXT below.
-
-Follow STEP 7 output format: Summary (verdict + confidence), Key Findings (paths, signal types, why it matters), Context Analysis (normal vs suspicious), Final Reasoning.
-
-Be conversational but structured. Down-weight findings in LOW_TRUST paths unless correlated with other signals. Prefer NEEDS MANUAL REVIEW over false accusation. About 400–700 words unless there are very few findings.
-
-When multiple repositories or scans appear in context, name explicitly which repository or scan each major finding belongs to (use URL or path shown in the FINDINGS CONTEXT).`;
 
 const UPLOAD_OVERVIEW_PROMPT = `Focus primarily on the UPLOADED ARTIFACT SCAN section (user-supplied zip/files). Produce a STEP 7 style assessment: Summary, Key Findings, Context Analysis, Final Reasoning. If the store also has other findings, mention how they relate.`;
 
@@ -110,13 +102,10 @@ type ApiResult =
   | { ok: false; message: string };
 
 export function DashboardRiskChat(props: {
-  notableFindingCount: number;
   copilotRiskPathHints: CopilotRiskPathHint[];
-  copilotScanSources: CopilotScanSource[];
   copilotFocusSessionId?: string | null;
 }) {
-  const { notableFindingCount, copilotRiskPathHints, copilotScanSources, copilotFocusSessionId } =
-    props;
+  const { copilotRiskPathHints, copilotFocusSessionId } = props;
   const router = useRouter();
   const pathname = usePathname();
   const pathTreeRoot = useMemo(
@@ -132,7 +121,22 @@ export function DashboardRiskChat(props: {
   const [uploadBusy, setUploadBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const dashboardBootstrapDoneRef = useRef(false);
+
+  const copilotUnlocked = useMemo(() => {
+    return (
+      Boolean(copilotFocusSessionId?.trim()) ||
+      Boolean(attachmentContext?.trim()) ||
+      uploadBusy ||
+      loading ||
+      messages.length > 0
+    );
+  }, [
+    copilotFocusSessionId,
+    attachmentContext,
+    uploadBusy,
+    loading,
+    messages.length,
+  ]);
 
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -192,37 +196,6 @@ export function DashboardRiskChat(props: {
   );
 
   useEffect(() => {
-    if (copilotFocusSessionId) return;
-    if (dashboardBootstrapDoneRef.current) return;
-    dashboardBootstrapDoneRef.current = true;
-
-    if (notableFindingCount === 0) {
-      setMessages([]);
-      return;
-    }
-
-    void (async () => {
-      const result = await callChat(
-        [{ role: "user", content: `${OVERVIEW_PROMPT}\n\n${RESPONSE_STYLE_INSTRUCTIONS}` }],
-        null
-      );
-      if (result.ok) {
-        setMessages([{ id: genId(), role: "assistant", content: result.reply }]);
-      } else {
-        setMessages([
-          {
-            id: genId(),
-            role: "assistant",
-            content:
-              result.message +
-              "\n\nYou can still attach a zip, use GitHub scan, or configure an LLM under Settings.",
-          },
-        ]);
-      }
-    })();
-  }, [notableFindingCount, callChat, copilotFocusSessionId]);
-
-  useEffect(() => {
     if (!copilotFocusSessionId) return;
     let cancelled = false;
 
@@ -261,8 +234,6 @@ export function DashboardRiskChat(props: {
         );
 
         if (cancelled) return;
-
-        dashboardBootstrapDoneRef.current = true;
 
         const userLine: Msg = {
           id: genId(),
@@ -309,6 +280,7 @@ export function DashboardRiskChat(props: {
   }, [copilotFocusSessionId, callChat, router, pathname]);
 
   async function handleSend() {
+    if (!copilotUnlocked) return;
     const trimmed = input.trim();
     if (!trimmed || loading) return;
 
@@ -410,33 +382,13 @@ export function DashboardRiskChat(props: {
       <div className="border-b border-zinc-800/80 px-2 py-3 sm:px-3">
         <h2 className="text-lg font-semibold text-zinc-50">Risk copilot</h2>
         <p className="text-xs text-zinc-500">
-          Ask questions about current findings and optional uploaded files (static analysis only). Paths with medium+
-          scanner hits are underlined (
+          Copilot runs only after you <strong className="font-medium text-zinc-400">scan a repo</strong>,{" "}
+          <strong className="font-medium text-zinc-400">attach files</strong>, or open a scan from the header Alerts menu.
+          Then you can ask follow-ups (static analysis only). Paths with medium+ scanner hits are underlined (
           <span className="text-red-300/90">critical</span>,{" "}
           <span className="text-orange-200/90">high</span>,{" "}
           <span className="text-amber-200/80">medium</span>).
         </p>
-        <div className="mt-2 rounded-lg border border-zinc-800/90 bg-zinc-950/60 px-2 py-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-            Scanned sources (Copilot context)
-          </p>
-          {copilotScanSources.length === 0 ? (
-            <p className="mt-1 text-xs text-zinc-600">
-              No repo or upload scans yet. Use Quick repo scan or attach files — the source will show here.
-            </p>
-          ) : (
-            <ul className="mt-1 max-h-28 space-y-1 overflow-y-auto text-xs text-zinc-100">
-              {copilotScanSources.map((src) => (
-                <li key={src.sessionId} className="min-w-0" title={src.label}>
-                  <span className="block truncate font-mono text-[11px] text-emerald-100/95">{src.label}</span>
-                  {src.scanTag ? (
-                    <span className="block text-[10px] text-zinc-500">{src.scanTag}</span>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
         {attachmentLabel && (
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
             <Paperclip className="size-3.5 shrink-0" />
@@ -464,10 +416,15 @@ export function DashboardRiskChat(props: {
       </div>
 
       <div className="min-h-[20rem] flex-1 space-y-4 px-1 py-3 sm:px-2 sm:py-4">
-        <CopilotDirectoryMap
-          root={pathTreeRoot}
-          pathCount={copilotRiskPathHints.length}
-        />
+        {!copilotUnlocked ? (
+          <p className="rounded-xl border border-zinc-800/80 bg-zinc-950/40 px-3 py-4 text-sm text-zinc-500">
+            Risk Copilot is idle. Use <span className="text-zinc-400">Quick repo scan</span> in the sidebar — after the
+            scan finishes, analysis opens here automatically. You can also attach a zip or files below to activate
+            Copilot.
+          </p>
+        ) : (
+          <CopilotDirectoryMap root={pathTreeRoot} pathCount={copilotRiskPathHints.length} />
+        )}
         {messages.map((m) => (
           <div
             key={m.id}
@@ -518,10 +475,15 @@ export function DashboardRiskChat(props: {
         </div>
         <div className="mt-2 flex items-end gap-2">
           <textarea
-            className="min-h-[44px] flex-1 resize-none rounded-2xl border border-zinc-700/80 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-900/50"
+            className="min-h-[44px] flex-1 resize-none rounded-2xl border border-zinc-700/80 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-900/50 disabled:cursor-not-allowed disabled:opacity-60"
             rows={2}
-            placeholder="Ask about a file, severity, or what to verify…"
+            placeholder={
+              copilotUnlocked
+                ? "Ask about a file, severity, or what to verify…"
+                : "Run a repo scan or attach files first…"
+            }
             value={input}
+            disabled={!copilotUnlocked || loading || uploadBusy}
             autoComplete="off"
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
@@ -534,7 +496,7 @@ export function DashboardRiskChat(props: {
           <Button
             type="button"
             className="shrink-0 rounded-2xl"
-            disabled={loading || uploadBusy || !input.trim()}
+            disabled={!copilotUnlocked || loading || uploadBusy || !input.trim()}
             onClick={() => void handleSend()}
           >
             <Send className="size-4" />

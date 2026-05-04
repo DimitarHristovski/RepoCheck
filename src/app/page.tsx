@@ -2,7 +2,6 @@ import Link from "next/link";
 import { getDashboardData } from "@/lib/server/dashboardData";
 import { DashboardGithubScan } from "@/components/dashboard-github-scan";
 import { DashboardRiskChat } from "@/components/dashboard-risk-chat";
-import { DashboardGuardianPanel } from "@/components/dashboard-guardian-panel";
 
 export const dynamic = "force-dynamic";
 import { RiskTrendChart } from "@/components/risk-trend-chart";
@@ -22,7 +21,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     score: r.totalScore,
     label: r.label,
   }));
-  const notableCount = data.flaggedFindings.length;
   return (
     <div className="space-y-4">
       <div className="grid items-start gap-4 xl:min-h-[calc(100vh-7rem)] xl:grid-cols-[1fr_3fr] xl:items-stretch">
@@ -34,7 +32,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             </p>
           </div>
           <DashboardGithubScan />
-          <DashboardGuardianPanel />
 
           <details className="group rounded-xl border border-zinc-800 bg-zinc-950/40">
             <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium text-zinc-200 marker:content-none">
@@ -49,10 +46,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
         <section className="min-w-0 xl:h-full">
           <DashboardRiskChat
-            key={notableCount}
-            notableFindingCount={notableCount}
             copilotRiskPathHints={data.copilotRiskPathHints}
-            copilotScanSources={data.copilotScanSources}
             copilotFocusSessionId={copilotFocusSessionId}
           />
         </section>

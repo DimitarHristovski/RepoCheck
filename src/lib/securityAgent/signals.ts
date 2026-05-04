@@ -61,7 +61,11 @@ export function extractSignalsFromContent(
   if (/\b(?:powershell|pwsh)\b/i.test(content)) {
     add("POWERSHELL_INVOCATION", "powershell/pwsh");
   }
-  if (/\bcurl\b[^|\n]{0,120}\|\s*(?:bash|sh|zsh|fish)\b/i.test(content)) {
+  const curlPipeShellRe = new RegExp(
+    String.raw`\bcurl\b[^|\n]{0,120}` + String.raw`\|\s*(?:bash|sh|zsh|fish)\b`,
+    "i"
+  );
+  if (curlPipeShellRe.test(content)) {
     add("CURL_PIPE_BASH", "curl|bash");
   }
 

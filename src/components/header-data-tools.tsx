@@ -8,11 +8,12 @@ export function HeaderDataTools() {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
-  async function reset(scope: "scans" | "all") {
+  async function clearHistoryAndData() {
     const ok = window.confirm(
-      scope === "all"
-        ? "Clear all scan history, findings, and downloaded GitHub archives from this machine? (Also clears legacy folder entries from the store file.)"
-        : "Remove all repo scan sessions, findings, and scores from the local store?"
+      "Clear all local scan history and data on this machine?\n\n" +
+        "This removes sessions, findings, risk scores, downloaded archive records, audit logs, and legacy folder entries from the store. " +
+        "Saved Settings (including Guardian token) are not removed.\n\n" +
+        "This cannot be undone."
     );
     if (!ok) return;
 
@@ -21,7 +22,7 @@ export function HeaderDataTools() {
       const res = await fetch("/api/store/reset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scope: scope === "all" ? "all" : "scans" }),
+        body: JSON.stringify({ scope: "all" }),
       });
       if (!res.ok) {
         const d = (await res.json()) as { error?: unknown };
@@ -36,19 +37,16 @@ export function HeaderDataTools() {
   }
 
   return (
-    <div className="ml-auto flex items-center gap-2">
-      <Button type="button" variant="secondary" size="sm" disabled={busy} onClick={() => void reset("scans")}>
-        Clear history
-      </Button>
+    <div className="flex items-center gap-2">
       <Button
         type="button"
         variant="outline"
         size="sm"
         className="border-red-900/60 text-red-200 hover:bg-red-950/40"
         disabled={busy}
-        onClick={() => void reset("all")}
+        onClick={() => void clearHistoryAndData()}
       >
-        Reset all data
+        {busy ? "Clearing…" : "Clear history & data"}
       </Button>
     </div>
   );
