@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EntrySplash } from "@/components/entry-splash";
+import { HeaderDataTools } from "@/components/header-data-tools";
+import { GuardianAlertPopups } from "@/components/guardian-alert-popups";
 
 const links = [
   { href: "/", label: "Dashboard" },
@@ -12,6 +14,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col">
       <EntrySplash />
+      <GuardianAlertPopups />
       <header className="sticky top-0 z-40 border-b border-zinc-800/80 bg-zinc-950/90 backdrop-blur-md">
         <div className="flex h-14 w-full items-center gap-6 px-4 sm:px-6">
           <Link href="/" className="flex items-center gap-2 font-semibold text-zinc-100">
@@ -31,6 +34,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               </Link>
             ))}
           </nav>
+          <HeaderDataTools />
         </div>
       </header>
       <main className="w-full flex-1 px-4 py-8 sm:px-6">

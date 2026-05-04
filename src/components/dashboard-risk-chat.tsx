@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { RiskCopilotMessageBody } from "@/components/risk-copilot-message-body";
 import type { CopilotRiskPathHint } from "@/lib/store/repository";
 import { Send, Loader2, Paperclip, X } from "lucide-react";
 import { buildPathTreeFromHints } from "@/lib/dashboard/pathTree";
 import { CopilotDirectoryMap } from "@/components/copilot-directory-map";
+import { inferPathTrustTier } from "@/lib/pathTrustTier";
 
 type Role = "user" | "assistant";
 
@@ -39,6 +40,69 @@ Be conversational but structured. Down-weight findings in LOW_TRUST paths unless
 
 const UPLOAD_OVERVIEW_PROMPT = `Focus primarily on the UPLOADED ARTIFACT SCAN section (user-supplied zip/files). Produce a STEP 7 style assessment: Summary, Key Findings, Context Analysis, Final Reasoning. If the store also has other findings, mention how they relate.`;
 
+const SESSION_FOCUS_PROMPT = `The evidence below is ONLY for one focused repository scan session (FOCUSED REPO SCAN SESSION block from attachment context).
+
+Using your auditor methodology, produce the structured assessment format requested in RESPONSE STYLE INSTRUCTIONS.
+Treat every finding in this session as primary evidence; ignore unrelated repos unless the user asks.`;
+
+type SessionBundleJson = {
+  session?: {
+    id: string;
+    metadataJson?: Record<string, unknown> | null;
+  };
+  findings?: Array<{
+    severity: string;
+    category: string;
+    title: string;
+    description: string | null;
+    filePath: string | null;
+    lineHint: string | null;
+  }>;
+};
+
+function buildSessionFocusAttachment(bundle: SessionBundleJson): string | null {
+  const session = bundle.session;
+  const findings = bundle.findings ?? [];
+  if (!session) return null;
+
+  const meta = session.metadataJson ?? {};
+  const sourceRef = String(meta.sourceRef ?? meta.localPath ?? "unknown source");
+
+  const rank: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+  const sorted = [...findings].sort(
+    (a, b) =>
+      (rank[a.severity] ?? 9) - (rank[b.severity] ?? 9) ||
+      (a.title ?? "").localeCompare(b.title ?? "")
+  );
+
+  const lines: string[] = [
+    "FOCUSED REPO SCAN SESSION (single repository — primary evidence for this reply)",
+    `Session ID: ${session.id}`,
+    `Source: ${sourceRef}`,
+    `Total findings in session: ${sorted.length}`,
+    "",
+    "Detailed findings (prioritized by severity):",
+  ];
+
+  const cap = 80;
+  for (let i = 0; i < Math.min(sorted.length, cap); i++) {
+    const f = sorted[i]!;
+    const tier = inferPathTrustTier(f.filePath);
+    lines.push(
+      `${i + 1}. [${f.severity}] ${f.category} — ${f.title}`,
+      `   File: ${f.filePath ?? "(no path)"}`,
+      `   Trust tier (path heuristic): ${tier}`,
+      f.lineHint ? `   Hint: ${f.lineHint}` : "",
+      `   Scanner note: ${(f.description ?? "").slice(0, 500)}`
+    );
+  }
+  if (sorted.length > cap) {
+    lines.push("", `… ${sorted.length - cap} additional findings omitted for size`);
+  }
+
+  return lines.filter(Boolean).join("\n");
+}
+
 type ApiResult =
   | { ok: true; reply: string }
   | { ok: false; message: string };
@@ -46,9 +110,11 @@ type ApiResult =
 export function DashboardRiskChat(props: {
   notableFindingCount: number;
   copilotRiskPathHints: CopilotRiskPathHint[];
+  copilotFocusSessionId?: string | null;
 }) {
-  const { notableFindingCount, copilotRiskPathHints } = props;
+  const { notableFindingCount, copilotRiskPathHints, copilotFocusSessionId } = props;
   const router = useRouter();
+  const pathname = usePathname();
   const pathTreeRoot = useMemo(
     () => buildPathTreeFromHints(copilotRiskPathHints),
     [copilotRiskPathHints]
@@ -62,7 +128,7 @@ export function DashboardRiskChat(props: {
   const [uploadBusy, setUploadBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const bootstrapOnce = useRef(false);
+  const dashboardBootstrapDoneRef = useRef(false);
 
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -122,8 +188,9 @@ export function DashboardRiskChat(props: {
   );
 
   useEffect(() => {
-    if (bootstrapOnce.current) return;
-    bootstrapOnce.current = true;
+    if (copilotFocusSessionId) return;
+    if (dashboardBootstrapDoneRef.current) return;
+    dashboardBootstrapDoneRef.current = true;
 
     if (notableFindingCount === 0) {
       setMessages([]);
@@ -149,7 +216,93 @@ export function DashboardRiskChat(props: {
         ]);
       }
     })();
-  }, [notableFindingCount, callChat]);
+  }, [notableFindingCount, callChat, copilotFocusSessionId]);
+
+  useEffect(() => {
+    if (!copilotFocusSessionId) return;
+    let cancelled = false;
+
+    void (async () => {
+      setBanner(null);
+      setMessages([
+        {
+          id: genId(),
+          role: "assistant",
+          content: "Loading this repository scan into Risk Copilot…",
+        },
+      ]);
+
+      try {
+        const res = await fetch(`/api/sessions/${copilotFocusSessionId}`, {
+          cache: "no-store",
+        });
+        const bundle = (await res.json()) as SessionBundleJson & { error?: string };
+        if (!res.ok || !bundle.session) {
+          throw new Error(bundle.error ?? res.statusText ?? "Session not found");
+        }
+
+        const block = buildSessionFocusAttachment(bundle);
+        if (!block) throw new Error("Could not build scan context.");
+
+        const meta = bundle.session.metadataJson ?? {};
+        const sourceRef = String(meta.sourceRef ?? meta.localPath ?? "repository scan");
+        const count = bundle.findings?.length ?? 0;
+
+        setAttachmentContext(block);
+        setAttachmentLabel(`Guardian / focused repo: ${sourceRef}`);
+
+        const result = await callChat(
+          [{ role: "user", content: `${SESSION_FOCUS_PROMPT}\n\n${RESPONSE_STYLE_INSTRUCTIONS}` }],
+          block
+        );
+
+        if (cancelled) return;
+
+        dashboardBootstrapDoneRef.current = true;
+
+        const userLine: Msg = {
+          id: genId(),
+          role: "user",
+          content: `[Guardian alert → Risk Copilot] Review scan session ${copilotFocusSessionId.slice(0, 8)}… · ${count} heuristic signals · ${sourceRef}`,
+        };
+
+        if (result.ok) {
+          setMessages([
+            userLine,
+            { id: genId(), role: "assistant", content: result.reply },
+          ]);
+        } else {
+          setMessages([
+            userLine,
+            {
+              id: genId(),
+              role: "assistant",
+              content:
+                result.message +
+                "\n\nFindings for this session are still attached above as context; configure an LLM under Settings for full Copilot answers.",
+            },
+          ]);
+        }
+
+        router.replace(pathname || "/", { scroll: false });
+        router.refresh();
+      } catch (e) {
+        if (cancelled) return;
+        const msg = e instanceof Error ? e.message : String(e);
+        setMessages([
+          {
+            id: genId(),
+            role: "assistant",
+            content: `Could not load this scan in Risk Copilot: ${msg}`,
+          },
+        ]);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [copilotFocusSessionId, callChat, router, pathname]);
 
   async function handleSend() {
     const trimmed = input.trim();

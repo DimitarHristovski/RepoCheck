@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { getDashboardData } from "@/lib/server/dashboardData";
-import { DashboardResetPanel } from "@/components/dashboard-reset-panel";
 import { DashboardGithubScan } from "@/components/dashboard-github-scan";
 import { DashboardRiskChat } from "@/components/dashboard-risk-chat";
 import { DashboardGuardianPanel } from "@/components/dashboard-guardian-panel";
@@ -9,7 +8,14 @@ export const dynamic = "force-dynamic";
 import { RiskTrendChart } from "@/components/risk-trend-chart";
 import { ChevronDown, CircleHelp } from "lucide-react";
 
-export default function DashboardPage() {
+type DashboardPageProps = {
+  searchParams?: Promise<{ copilotSession?: string }>;
+};
+
+export default async function DashboardPage({ searchParams }: DashboardPageProps) {
+  const sp = searchParams ? await searchParams : {};
+  const copilotFocusSessionId = sp.copilotSession?.trim() || null;
+
   const data = getDashboardData();
   const trendPoints = data.riskTrend.map((r) => ({
     id: r.id,
@@ -39,8 +45,6 @@ export default function DashboardPage() {
               <RiskTrendChart data={trendPoints} />
             </div>
           </details>
-
-          <DashboardResetPanel />
         </aside>
 
         <section className="min-w-0 xl:h-full">
@@ -48,6 +52,7 @@ export default function DashboardPage() {
             key={notableCount}
             notableFindingCount={notableCount}
             copilotRiskPathHints={data.copilotRiskPathHints}
+            copilotFocusSessionId={copilotFocusSessionId}
           />
         </section>
       </div>

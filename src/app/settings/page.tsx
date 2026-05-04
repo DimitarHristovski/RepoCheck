@@ -15,6 +15,7 @@ type Settings = {
   guardian: {
     enabled: boolean;
     githubRepos: string[];
+    githubAccountLogin: string;
     localWatchDirs: string[];
     pollMs: number;
     alertMinSeverity: "critical" | "high" | "medium";
@@ -89,19 +90,31 @@ export default function SettingsPage() {
 
   async function save() {
     if (!settings) return;
+    setTokenTestMsg(null);
     const res = await fetch("/api/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...settings }),
     });
     const data = (await res.json()) as {
-      settings: Settings;
+      settings?: Settings;
+      autoImportedRepoCount?: number;
       runtime?: RuntimeInfo;
       guardian?: GuardianRuntime;
+      error?: string;
     };
+    if (!res.ok || !data.settings) {
+      setTokenTestMsg(data.error ?? "Failed to save settings.");
+      return;
+    }
     setSettings(data.settings);
     if (data.runtime) setRuntime(data.runtime);
     if (data.guardian) setGuardianRuntime(data.guardian);
+    if ((data.autoImportedRepoCount ?? 0) > 0) {
+      setTokenTestMsg(
+        `Auto-imported ${data.autoImportedRepoCount} repos and started Guardian scanning.`
+      );
+    }
   }
 
   async function testToken() {
@@ -220,8 +233,8 @@ export default function SettingsPage() {
         <CardHeader>
           <CardTitle>Guardian (continuous protection)</CardTitle>
           <CardDescription>
-            Connect your GitHub repos and local folders for always-on scanning while RepoCheck is running.
-            Checks run automatically in the background after Save.
+            GitHub monitoring follows the account tied to your saved token (all repos that token can access).
+            Guardian scans every repo automatically on a repeating schedule (poll interval below). Optional local folders add disk paths to watch. Runs after Save with no manual scan clicks.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -269,6 +282,9 @@ export default function SettingsPage() {
                   GitHub token setup
                 </a>
               </p>
+              <p className="text-xs text-zinc-500">
+                Save settings to auto-import all repos this token can access and start automatic scans.
+              </p>
               <div>
                 <Button
                   type="button"
@@ -287,25 +303,45 @@ export default function SettingsPage() {
           <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
             <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">2) Sources to monitor</p>
             <div className="mt-3 space-y-2">
-              <Label>GitHub repos (one per line: owner/repo or github URL)</Label>
-              <textarea
-                className="min-h-24 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
-                value={settings.guardian.githubRepos.join("\n")}
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    guardian: {
-                      ...settings.guardian,
-                      githubRepos: e.target.value
-                        .split("\n")
-                        .map((x) => x.trim())
-                        .filter(Boolean),
-                    },
-                  })
-                }
-              />
+              <Label>GitHub account (connected via token)</Label>
+              <p className="text-xs text-zinc-500">
+                Sources are every repository your saved GitHub token can read. Saving settings refreshes that list from
+                GitHub. Guardian then scans each repo automatically every poll interval (one full pass through all repos,
+                then repeats).
+              </p>
+              {settings.guardian.githubAccountLogin ? (
+                <p className="text-sm text-zinc-200">
+                  Connected account:{" "}
+                  <span className="font-semibold text-emerald-300">
+                    @{settings.guardian.githubAccountLogin}
+                  </span>
+                </p>
+              ) : settings.guardian.githubToken ? (
+                <p className="text-xs text-zinc-500">
+                  Save settings once to sync repos from the GitHub account for this token.
+                </p>
+              ) : (
+                <p className="text-xs text-amber-200/90">
+                  Add a GitHub token under Access, then save settings to connect your account.
+                </p>
+              )}
+              <div className="max-h-44 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-950/80 p-2 font-mono text-[11px] leading-relaxed text-zinc-400">
+                {settings.guardian.githubRepos.length === 0 ? (
+                  <span className="text-zinc-600">No repositories loaded yet.</span>
+                ) : (
+                  settings.guardian.githubRepos.map((name) => (
+                    <div key={name} className="truncate">
+                      {name}
+                    </div>
+                  ))
+                )}
+              </div>
+              <p className="text-xs text-zinc-500">
+                {settings.guardian.githubRepos.length}{" "}
+                {settings.guardian.githubRepos.length === 1 ? "repository" : "repositories"} monitored from GitHub
+              </p>
             </div>
-            <div className="mt-3 space-y-2">
+            <div className="mt-5 space-y-2 border-t border-zinc-800/80 pt-4">
               <Label>Local folders to watch (absolute paths, one per line)</Label>
               <textarea
                 className="min-h-24 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
@@ -326,8 +362,12 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
             <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">3) Runtime behavior</p>
+            <p className="mt-2 text-xs text-zinc-500">
+              Between polls, Guardian downloads and statically analyzes each GitHub repo in your list in sequence,
+              then waits until the next interval.
+            </p>
             <div className="mt-3 grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>GitHub poll interval (ms)</Label>

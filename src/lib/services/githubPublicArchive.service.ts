@@ -95,6 +95,71 @@ export async function listGithubBranches(input: {
   return { branches, defaultBranch };
 }
 
+export async function listGithubAccountRepos(input: {
+  token: string;
+  maxPages?: number;
+}): Promise<{ login: string; repos: Array<{ fullName: string; isPrivate: boolean }> }> {
+  const token = input.token.trim();
+  if (!token) {
+    throw new Error("GitHub token is required.");
+  }
+
+  const me = await fetch("https://api.github.com/user", {
+    headers: githubHeaders(token),
+    cache: "no-store",
+  });
+  if (me.status === 401) {
+    throw new Error("GitHub token invalid or expired. Update token in Settings.");
+  }
+  if (!me.ok) {
+    throw new Error(`GitHub account lookup failed (${me.status}).`);
+  }
+  const meJson = (await me.json()) as { login?: string };
+  const login = (meJson.login ?? "").trim();
+  if (!login) {
+    throw new Error("Unable to read GitHub account profile from token.");
+  }
+
+  const repos: Array<{ fullName: string; isPrivate: boolean }> = [];
+  const maxPages = Math.max(1, Math.min(10, input.maxPages ?? 10));
+
+  for (let page = 1; page <= maxPages; page += 1) {
+    const res = await fetch(
+      `https://api.github.com/user/repos?per_page=100&page=${page}&sort=updated&direction=desc&affiliation=owner,collaborator,organization_member`,
+      {
+        headers: githubHeaders(token),
+        cache: "no-store",
+      }
+    );
+
+    if (res.status === 401) {
+      throw new Error("GitHub token invalid or expired. Update token in Settings.");
+    }
+    if (res.status === 403) {
+      const j = (await res.json().catch(() => ({}))) as { message?: string };
+      throw new Error(
+        j.message?.includes("rate limit")
+          ? "GitHub API rate limit exceeded. Try again in a few minutes."
+          : "GitHub refused repo listing (403). Check token scopes/repo access."
+      );
+    }
+    if (!res.ok) {
+      throw new Error(`GitHub repo listing failed (${res.status}).`);
+    }
+
+    const rows = (await res.json()) as Array<{ full_name?: string; private?: boolean }>;
+    if (rows.length === 0) break;
+    for (const row of rows) {
+      const fullName = row.full_name?.trim() ?? "";
+      if (!fullName) continue;
+      repos.push({ fullName, isPrivate: Boolean(row.private) });
+    }
+    if (rows.length < 100) break;
+  }
+
+  return { login, repos };
+}
+
 /**
  * Download repo as ZIP (no git), extract under analysisRoot, return path to repo root folder.
  * Uses GitHub API zipball endpoint so private repos work with token auth.

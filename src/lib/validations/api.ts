@@ -36,6 +36,7 @@ export const settingsPatchSchema = z.object({
       pollMs: z.number().int().min(60_000).max(86_400_000).optional(),
       alertMinSeverity: z.enum(["critical", "high", "medium"]).optional(),
       githubToken: z.string().max(512).optional(),
+      githubAccountLogin: z.string().max(256).optional(),
     })
     .optional(),
 });

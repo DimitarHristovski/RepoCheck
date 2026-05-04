@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { readStore, mutateStore } from "@/lib/store/persistence";
 import type {
   ApprovedFolderRow,
+  AuditLogRow,
   FindingRow,
   ProposedActionRow,
   RiskScoreRow,
@@ -238,6 +239,23 @@ export function appendAuditLog(input: {
       createdAt: iso(),
     });
   });
+}
+
+export function listGuardianAlerts(input?: {
+  since?: string;
+  limit?: number;
+}): AuditLogRow[] {
+  const sinceMs = input?.since ? new Date(input.since).getTime() : null;
+  const rows = readStore().auditLogs.filter((row) => {
+    if (row.actor !== "guardian" || row.action !== "alert") return false;
+    if (sinceMs && Number.isFinite(sinceMs)) {
+      return new Date(row.createdAt).getTime() > sinceMs;
+    }
+    return true;
+  });
+  const sorted = sortByCreatedAtDesc(rows);
+  const limit = Math.max(1, Math.min(50, input?.limit ?? 10));
+  return sorted.slice(0, limit);
 }
 
 export function readAppSettingsBlob(): unknown | null {

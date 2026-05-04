@@ -97,22 +97,24 @@ export function DashboardGithubScan() {
       <CardHeader className="pb-1">
         <CardTitle className="flex items-center gap-2 text-base text-zinc-100">
           <Github className="size-5 text-zinc-300" />
-          Quick repo scan
+          Scan any GitHub repo
         </CardTitle>
         <CardDescription>
-          Paste a GitHub repo and run a one-time scan. Works with private repos when token is set in Settings.
+          Paste a link or <code className="text-zinc-500">owner/repo</code> for any public repository (yours or someone
+          else’s). Private repos only work if your Settings token can read them. No GitHub account linking required for
+          public URLs.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
           <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Step 1</p>
           <div className="mt-2 min-w-0 space-y-2">
-            <Label htmlFor="gh-url">Repository</Label>
+            <Label htmlFor="gh-url">Repository URL or shorthand</Label>
             <Input
               id="gh-url"
               name="repocheck-github-url"
               autoComplete="off"
-              placeholder="owner/repo or https://github.com/org/repo"
+              placeholder="https://github.com/other-user/their-repo"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               onBlur={() => void loadBranches()}
@@ -124,7 +126,8 @@ export function DashboardGithubScan() {
               }}
             />
             <p className="text-xs text-zinc-500">
-              Examples: <code>vercel/next.js</code>, <code>https://github.com/org/repo</code>
+              Works with full links (including <code>/tree/branch</code> paths — repo is detected automatically):{" "}
+              <code>https://github.com/facebook/react</code>, or shorthand <code>microsoft/vscode</code>.
             </p>
             <Button
               type="button"

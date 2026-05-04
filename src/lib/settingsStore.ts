@@ -17,6 +17,8 @@ export const appSettingsSchema = z.object({
       pollMs: z.number().int().min(60_000).max(86_400_000).default(300_000),
       alertMinSeverity: z.enum(["critical", "high", "medium"]).default("high"),
       githubToken: z.string().max(512).default(""),
+      /** Set automatically when repos are imported via token (GitHub login handle). */
+      githubAccountLogin: z.string().max(256).default(""),
     })
     .default({}),
 });

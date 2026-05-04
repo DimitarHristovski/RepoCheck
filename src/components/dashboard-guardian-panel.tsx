@@ -57,7 +57,7 @@ export function DashboardGuardianPanel() {
       <CardHeader>
         <CardTitle className="text-zinc-100">Auto monitor (Guardian)</CardTitle>
         <CardDescription>
-          Always-on checks for connected GitHub repos and local folders.
+          Each connected GitHub repo is scanned automatically on every poll cycle (plus optional local folders).
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 text-xs text-zinc-300">
@@ -68,7 +68,9 @@ export function DashboardGuardianPanel() {
               <p className="mt-1">
                 {status.started ? "Running" : "Stopped"} · enabled={String(status.enabled)}
               </p>
-              <p>Connected repos: {status.githubRepoCount}</p>
+              <p>
+                Connected repos: {status.githubRepoCount} (each scanned automatically each cycle)
+              </p>
               <p>Watched folders: {status.watchedDirs}</p>
               <p>
                 Active jobs (GitHub/local): {status.runningGithubJobs}/{status.runningLocalJobs}
