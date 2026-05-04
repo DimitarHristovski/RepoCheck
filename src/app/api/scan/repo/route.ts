@@ -110,7 +110,8 @@ export async function POST(req: Request) {
     localPath,
   });
 
-  const { findings, treeSummary } = analyzeLocalRepo(localPath);
+  const { findings, treeSummary, severityCounts, harmfulByTopFolder } =
+    analyzeLocalRepo(localPath);
 
   const { sessionId, llm } = await finalizeScanSession({
     findings,
@@ -128,6 +129,9 @@ export async function POST(req: Request) {
       sourceType,
       sourceRef,
       localPath,
+      scanTreeSummary: treeSummary,
+      scanSeverityCounts: severityCounts,
+      harmfulByTopFolder,
     },
   });
 
@@ -137,6 +141,8 @@ export async function POST(req: Request) {
     localPath,
     treeSummary,
     findingsCount: findings.length,
+    severityCounts,
+    harmfulByTopFolder,
     llmRiskExplanation: llm.ok ? llm.data : undefined,
     llmRiskExplanationError: llm.ok
       ? undefined
