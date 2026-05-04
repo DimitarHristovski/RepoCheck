@@ -52,6 +52,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             key={notableCount}
             notableFindingCount={notableCount}
             copilotRiskPathHints={data.copilotRiskPathHints}
+            copilotScanSources={data.copilotScanSources}
             copilotFocusSessionId={copilotFocusSessionId}
           />
         </section>

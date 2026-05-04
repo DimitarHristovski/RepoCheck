@@ -5,6 +5,7 @@ import type {
   AuditLogRow,
   FindingRow,
   ProposedActionRow,
+  RepoCheckStore,
   RiskScoreRow,
   ScanSessionRow,
   ScannedItemRow,
@@ -292,6 +293,83 @@ export type CopilotRiskPathHint = {
   severity: "critical" | "high" | "medium";
 };
 
+/** Repo/path/upload labels driving Risk Copilot context (shown in UI). */
+export type CopilotScanSource = {
+  sessionId: string;
+  label: string;
+  type: ScanSessionRow["type"];
+  scanTag?: string;
+};
+
+function scanSessionDisplayLabel(store: RepoCheckStore, row: ScanSessionRow): string {
+  const meta = row.metadataJson ?? {};
+  const sourceRef =
+    typeof meta.sourceRef === "string" && meta.sourceRef.trim()
+      ? meta.sourceRef.trim()
+      : null;
+  const localPath =
+    typeof meta.localPath === "string" && meta.localPath.trim()
+      ? meta.localPath.trim()
+      : null;
+  let label =
+    sourceRef ??
+    localPath ??
+    (row.type === "upload" ? "Uploaded artifact scan" : `${row.type} scan`);
+  if (!sourceRef && !localPath && row.repositoryId) {
+    const repo = store.repositories.find((r) => r.id === row.repositoryId);
+    if (repo?.sourceRef?.trim()) label = repo.sourceRef.trim();
+  }
+  return label;
+}
+
+/** Human-readable repo/path/upload label for a scan session (Copilot + LLM context). */
+export function resolveScanLabelForSession(sessionId: string): string {
+  const store = readStore();
+  const row = store.scanSessions.find((x) => x.id === sessionId);
+  if (!row) return `session ${sessionId.slice(0, 8)}…`;
+  return scanSessionDisplayLabel(store, row);
+}
+
+function buildCopilotScanSources(
+  store: RepoCheckStore,
+  flaggedPool: FindingRow[],
+  recentSessions: ScanSessionRow[]
+): CopilotScanSource[] {
+  const byId = new Map(store.scanSessions.map((x) => [x.id, x]));
+  const idsFromFindings = [...new Set(flaggedPool.map((f) => f.sessionId))];
+  let rows: ScanSessionRow[] = idsFromFindings
+    .map((id) => byId.get(id))
+    .filter((x): x is ScanSessionRow => Boolean(x));
+  rows.sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+
+  if (rows.length === 0) {
+    rows = recentSessions.slice(0, 8);
+  } else if (rows.length > 15) {
+    rows = rows.slice(0, 15);
+  }
+
+  const seen = new Set<string>();
+  const out: CopilotScanSource[] = [];
+  for (const row of rows) {
+    const label = scanSessionDisplayLabel(store, row);
+    const meta = row.metadataJson ?? {};
+    const scanTag =
+      typeof meta.scanSource === "string" ? meta.scanSource : undefined;
+    const dedupe = `${row.id}:${label}`;
+    if (seen.has(dedupe)) continue;
+    seen.add(dedupe);
+    out.push({
+      sessionId: row.id,
+      label,
+      type: row.type,
+      scanTag,
+    });
+  }
+  return out;
+}
+
 /** One entry per path (forward-slash normalized), worst severity wins — for copilot UI highlighting. */
 export function buildCopilotRiskPathHints(
   findings: FindingRow[]
@@ -337,6 +415,7 @@ export function getDashboardSnapshot(): {
   recentSessions: ScanSessionRow[];
   flaggedFindings: FindingRow[];
   copilotRiskPathHints: CopilotRiskPathHint[];
+  copilotScanSources: CopilotScanSource[];
   riskTrend: RiskScoreRow[];
 } {
   const s = readStore();
@@ -349,6 +428,7 @@ export function getDashboardSnapshot(): {
   const flaggedPool = listRepoMediumPlusFindings(40);
   const flagged = flaggedPool.slice(0, 20);
   const copilotRiskPathHints = buildCopilotRiskPathHints(flaggedPool);
+  const copilotScanSources = buildCopilotScanSources(s, flaggedPool, recentSessions);
   const riskTrend = sortByCreatedAtDesc(
     s.riskScores.filter((r) => repoSessionIds.has(r.sessionId))
   ).slice(0, 12);
@@ -359,6 +439,7 @@ export function getDashboardSnapshot(): {
     recentSessions,
     flaggedFindings: flagged,
     copilotRiskPathHints,
+    copilotScanSources,
     riskTrend,
   };
 }

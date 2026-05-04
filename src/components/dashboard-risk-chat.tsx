@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { RiskCopilotMessageBody } from "@/components/risk-copilot-message-body";
-import type { CopilotRiskPathHint } from "@/lib/store/repository";
+import type { CopilotRiskPathHint, CopilotScanSource } from "@/lib/store/repository";
 import { Send, Loader2, Paperclip, X } from "lucide-react";
 import { buildPathTreeFromHints } from "@/lib/dashboard/pathTree";
 import { CopilotDirectoryMap } from "@/components/copilot-directory-map";
@@ -36,7 +36,9 @@ const OVERVIEW_PROMPT = `Using your auditor methodology (steps 1–7), produce a
 
 Follow STEP 7 output format: Summary (verdict + confidence), Key Findings (paths, signal types, why it matters), Context Analysis (normal vs suspicious), Final Reasoning.
 
-Be conversational but structured. Down-weight findings in LOW_TRUST paths unless correlated with other signals. Prefer NEEDS MANUAL REVIEW over false accusation. About 400–700 words unless there are very few findings.`;
+Be conversational but structured. Down-weight findings in LOW_TRUST paths unless correlated with other signals. Prefer NEEDS MANUAL REVIEW over false accusation. About 400–700 words unless there are very few findings.
+
+When multiple repositories or scans appear in context, name explicitly which repository or scan each major finding belongs to (use URL or path shown in the FINDINGS CONTEXT).`;
 
 const UPLOAD_OVERVIEW_PROMPT = `Focus primarily on the UPLOADED ARTIFACT SCAN section (user-supplied zip/files). Produce a STEP 7 style assessment: Summary, Key Findings, Context Analysis, Final Reasoning. If the store also has other findings, mention how they relate.`;
 
@@ -110,9 +112,11 @@ type ApiResult =
 export function DashboardRiskChat(props: {
   notableFindingCount: number;
   copilotRiskPathHints: CopilotRiskPathHint[];
+  copilotScanSources: CopilotScanSource[];
   copilotFocusSessionId?: string | null;
 }) {
-  const { notableFindingCount, copilotRiskPathHints, copilotFocusSessionId } = props;
+  const { notableFindingCount, copilotRiskPathHints, copilotScanSources, copilotFocusSessionId } =
+    props;
   const router = useRouter();
   const pathname = usePathname();
   const pathTreeRoot = useMemo(
@@ -366,9 +370,7 @@ export function DashboardRiskChat(props: {
       );
 
       const sid = data.sessionId ?? "";
-      const sessionNote = sid
-        ? ` Saved as session ${sid.slice(0, 8)}… — use Recent scans → Findings / Actions.`
-        : "";
+      const sessionNote = sid ? ` Saved as session ${sid.slice(0, 8)}…` : "";
 
       setMessages((prev) => {
         const userLine: Msg = {
@@ -414,6 +416,27 @@ export function DashboardRiskChat(props: {
           <span className="text-orange-200/90">high</span>,{" "}
           <span className="text-amber-200/80">medium</span>).
         </p>
+        <div className="mt-2 rounded-lg border border-zinc-800/90 bg-zinc-950/60 px-2 py-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            Scanned sources (Copilot context)
+          </p>
+          {copilotScanSources.length === 0 ? (
+            <p className="mt-1 text-xs text-zinc-600">
+              No repo or upload scans yet. Use Quick repo scan or attach files — the source will show here.
+            </p>
+          ) : (
+            <ul className="mt-1 max-h-28 space-y-1 overflow-y-auto text-xs text-zinc-100">
+              {copilotScanSources.map((src) => (
+                <li key={src.sessionId} className="min-w-0" title={src.label}>
+                  <span className="block truncate font-mono text-[11px] text-emerald-100/95">{src.label}</span>
+                  {src.scanTag ? (
+                    <span className="block text-[10px] text-zinc-500">{src.scanTag}</span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
         {attachmentLabel && (
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
             <Paperclip className="size-3.5 shrink-0" />

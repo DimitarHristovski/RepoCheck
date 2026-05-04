@@ -1,4 +1,4 @@
-import { listRepoMediumPlusFindings } from "@/lib/store/repository";
+import { listRepoMediumPlusFindings, resolveScanLabelForSession } from "@/lib/store/repository";
 import { inferPathTrustTier } from "@/lib/pathTrustTier";
 import {
   REPOCHECK_SECURITY_AUDITOR_APPENDIX,
@@ -24,8 +24,10 @@ export function buildRiskChatFindingsContext(): string {
       const path = f.filePath ?? "(no single file path)";
       const tier = inferPathTrustTier(f.filePath);
       const desc = (f.description ?? "").slice(0, 400);
+      const sourceLabel = resolveScanLabelForSession(f.sessionId);
       return [
         `${i + 1}. [${f.severity}] ${f.category} — ${f.title}`,
+        `   Scanned source / repository: ${sourceLabel}`,
         `   File: ${path}`,
         `   Trust tier (path heuristic): ${tier}`,
         f.lineHint ? `   Hint: ${f.lineHint}` : null,
