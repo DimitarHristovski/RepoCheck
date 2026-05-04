@@ -4,21 +4,10 @@ import { DashboardResetPanel } from "@/components/dashboard-reset-panel";
 import { DashboardGithubScan } from "@/components/dashboard-github-scan";
 import { DashboardRiskChat } from "@/components/dashboard-risk-chat";
 import { DashboardGuardianPanel } from "@/components/dashboard-guardian-panel";
-import { formatFindingCategory } from "@/lib/dashboardRiskCopy";
 
 export const dynamic = "force-dynamic";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { RiskTrendChart } from "@/components/risk-trend-chart";
 import { ChevronDown, CircleHelp } from "lucide-react";
-
-function severityVariant(s: string): "info" | "warn" | "danger" | "default" {
-  if (s === "critical" || s === "high") return "danger";
-  if (s === "medium") return "warn";
-  if (s === "low") return "info";
-  return "default";
-}
 
 export default function DashboardPage() {
   const data = getDashboardData();
@@ -28,8 +17,6 @@ export default function DashboardPage() {
     label: r.label,
   }));
   const notableCount = data.flaggedFindings.length;
-
-  const topFindings = data.flaggedFindings.slice(0, 6);
   return (
     <div className="space-y-4">
       <div className="grid items-start gap-4 xl:min-h-[calc(100vh-7rem)] xl:grid-cols-[1fr_3fr] xl:items-stretch">
@@ -42,36 +29,6 @@ export default function DashboardPage() {
           </div>
           <DashboardGithubScan />
           <DashboardGuardianPanel />
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-zinc-100">Recent scans</CardTitle>
-              <CardDescription>Latest completed checks</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {data.recentSessions.length === 0 ? (
-                <p className="text-sm text-zinc-500">No scans yet.</p>
-              ) : (
-                data.recentSessions.map((s) => (
-                  <div
-                    key={s.id}
-                    className="flex items-center justify-between rounded-lg border border-zinc-800/80 bg-zinc-900/40 px-3 py-2"
-                  >
-                    <div>
-                      <p className="text-sm font-medium capitalize text-zinc-200">
-                        {s.type} · {s.status}
-                      </p>
-                      <p className="text-xs text-zinc-500">{s.id.slice(0, 8)}…</p>
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      <Button variant="ghost" size="sm" asChild>
-                        <Link href={`/findings?session=${s.id}`}>Open</Link>
-                      </Button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
 
           <details className="group rounded-xl border border-zinc-800 bg-zinc-950/40">
             <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium text-zinc-200 marker:content-none">
@@ -82,40 +39,6 @@ export default function DashboardPage() {
               <RiskTrendChart data={trendPoints} />
             </div>
           </details>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-zinc-100">Top findings</CardTitle>
-              <CardDescription>Most important medium+ issues</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {topFindings.length === 0 ? (
-                <p className="text-sm text-zinc-500">Nothing to review yet.</p>
-              ) : (
-                topFindings.map((f) => (
-                  <Link
-                    key={f.id}
-                    href={`/findings?session=${f.sessionId}`}
-                    className="block rounded-lg border border-zinc-800/80 bg-zinc-900/40 px-3 py-2 hover:bg-zinc-900/70"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Badge variant={severityVariant(f.severity)}>{f.severity}</Badge>
-                      <span className="truncate text-xs text-zinc-400">{formatFindingCategory(f.category)}</span>
-                    </div>
-                    <p className="mt-1 line-clamp-2 text-sm text-zinc-200">{f.title}</p>
-                    {f.filePath && (
-                      <p className="mt-1 truncate text-xs text-zinc-500">{f.filePath}</p>
-                    )}
-                  </Link>
-                ))
-              )}
-              <div className="pt-1">
-                <Link href="/findings" className="text-xs text-emerald-400 hover:underline">
-                  View all findings
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
 
           <DashboardResetPanel />
         </aside>
