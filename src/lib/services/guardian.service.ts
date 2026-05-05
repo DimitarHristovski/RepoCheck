@@ -124,7 +124,8 @@ async function scanPublicRepo(owner: string, repo: string): Promise<void> {
       sourceRef,
       localPath,
     });
-    const { findings } = analyzeLocalRepo(localPath);
+    const { findings, treeSummary, severityCounts, harmfulByTopFolder } =
+      analyzeLocalRepo(localPath);
     const highOrCritical = findings.filter(
       (f) => meetsAlertThreshold(f.severity, cfg.alertMinSeverity)
     );
@@ -145,6 +146,9 @@ async function scanPublicRepo(owner: string, repo: string): Promise<void> {
         sourceType: "archive",
         sourceRef,
         localPath,
+        scanTreeSummary: treeSummary,
+        scanSeverityCounts: severityCounts,
+        harmfulByTopFolder,
       },
     });
     if (highOrCritical.length > 0) {
@@ -181,7 +185,8 @@ async function scanLocalDirectory(rootDir: string): Promise<void> {
       sourceRef,
       localPath: resolved,
     });
-    const { findings } = analyzeLocalRepo(resolved);
+    const { findings, treeSummary, severityCounts, harmfulByTopFolder } =
+      analyzeLocalRepo(resolved);
     const cfg = getRuntimeConfig();
     const highOrCritical = findings.filter(
       (f) => meetsAlertThreshold(f.severity, cfg.alertMinSeverity)
@@ -203,6 +208,9 @@ async function scanLocalDirectory(rootDir: string): Promise<void> {
         sourceType: "local",
         sourceRef,
         localPath: resolved,
+        scanTreeSummary: treeSummary,
+        scanSeverityCounts: severityCounts,
+        harmfulByTopFolder,
       },
     });
     if (highOrCritical.length > 0) {

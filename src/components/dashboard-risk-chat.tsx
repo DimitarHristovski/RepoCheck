@@ -54,6 +54,20 @@ type SessionBundleJson = {
   }>;
 };
 
+const SEV_ORDER: Record<string, number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+  info: 4,
+};
+
+type HarmfulByFolderMeta = {
+  folder: string;
+  count: number;
+  worstSeverity: string;
+};
+
 function buildSessionFocusAttachment(bundle: SessionBundleJson): string | null {
   const session = bundle.session;
   const findings = bundle.findings ?? [];
@@ -74,9 +88,56 @@ function buildSessionFocusAttachment(bundle: SessionBundleJson): string | null {
     `Session ID: ${session.id}`,
     `Source: ${sourceRef}`,
     `Total findings in session: ${sorted.length}`,
-    "",
-    "Detailed findings (prioritized by severity):",
   ];
+
+  const tree = meta.scanTreeSummary as
+    | {
+        fileCount?: number;
+        truncated?: boolean;
+        topFolders?: string[];
+        skippedDependencyDirs?: number;
+        maxBytesPerTextFile?: number;
+      }
+    | undefined;
+  const counts = meta.scanSeverityCounts as Record<string, number> | undefined;
+  const byFolder = meta.harmfulByTopFolder as HarmfulByFolderMeta[] | undefined;
+
+  if (tree || counts || (byFolder && byFolder.length)) {
+    lines.push("", "SCAN COVERAGE (repository tree walk, static heuristics only):");
+    if (tree) {
+      lines.push(
+        `• Files enumerated for analysis: ${tree.fileCount ?? "unknown"}${
+          tree.truncated ? " (list truncated at configured max)" : ""
+        }`,
+        typeof tree.skippedDependencyDirs === "number"
+          ? `• Dependency/build directories skipped (not walked): ${tree.skippedDependencyDirs} (e.g. node_modules, .git, .next, dist, …)`
+          : "",
+        tree.topFolders?.length
+          ? `• Largest top-level areas in walk: ${tree.topFolders.join(", ")}`
+          : "",
+        typeof tree.maxBytesPerTextFile === "number"
+          ? `• Text files read up to ${tree.maxBytesPerTextFile} bytes each for pattern scan`
+          : ""
+      );
+    }
+    if (counts && Object.keys(counts).length) {
+      const parts = Object.entries(counts)
+        .sort((a, b) => (SEV_ORDER[a[0]] ?? 9) - (SEV_ORDER[b[0]] ?? 9))
+        .map(([k, v]) => `${k}: ${v}`);
+      lines.push(`• Findings by severity: ${parts.join(", ")}`);
+    }
+    if (byFolder?.length) {
+      lines.push(
+        "• Signals grouped by top-level folder (where paths suggest risk clusters):",
+        ...byFolder.slice(0, 14).map(
+          (r) =>
+            `   – ${r.folder}: ${r.count} finding(s), worst ${r.worstSeverity}`
+        )
+      );
+    }
+  }
+
+  lines.push("", "Detailed findings (prioritized by severity):");
 
   const cap = 80;
   for (let i = 0; i < Math.min(sorted.length, cap); i++) {

@@ -73,17 +73,50 @@ export function DashboardGithubScan() {
           },
         }),
       });
-      const data = (await res.json()) as { error?: unknown; findingsCount?: number; sessionId?: string };
+      const data = (await res.json()) as {
+        error?: unknown;
+        findingsCount?: number;
+        sessionId?: string;
+        treeSummary?: {
+          fileCount?: number;
+          truncated?: boolean;
+          topFolders?: string[];
+          skippedDependencyDirs?: number;
+        };
+        severityCounts?: Record<string, number>;
+        harmfulByTopFolder?: { folder: string; count: number; worstSeverity: string }[];
+      };
       if (!res.ok) {
         throw new Error(
           typeof data.error === "string" ? data.error : JSON.stringify(data.error ?? res.statusText)
         );
       }
       const sid = data.sessionId ?? "";
+      const n = data.findingsCount ?? 0;
+      const ts = data.treeSummary;
+      const crit = data.severityCounts?.critical ?? 0;
+      const high = data.severityCounts?.high ?? 0;
+      const med = data.severityCounts?.medium ?? 0;
+      const folders = (data.harmfulByTopFolder ?? [])
+        .slice(0, 5)
+        .map((r) => `${r.folder} (${r.count}, up to ${r.worstSeverity})`)
+        .join("; ");
+      const coverage =
+        ts &&
+        `Walked ${ts.fileCount ?? 0} files${
+          ts.truncated ? " (truncated at safety cap)" : ""
+        }${typeof ts.skippedDependencyDirs === "number" ? `; skipped ${ts.skippedDependencyDirs} dependency/build folders` : ""}${
+          ts.topFolders?.length ? ` — top areas: ${ts.topFolders.slice(0, 5).join(", ")}` : ""
+        }.`;
+      const harm =
+        n === 0
+          ? "No suspicious static signals in scanned paths."
+          : `Signals by severity: critical ${crit}, high ${high}, medium ${med}.` +
+            (folders ? ` Affected top-level areas: ${folders}.` : "");
       setOk(
         sid
-          ? `Scan complete (${data.findingsCount ?? 0} signals). Opening Risk Copilot…`
-          : `Scan complete (${data.findingsCount ?? 0} signals).`
+          ? `${coverage ? `${coverage} ` : ""}${harm} Opening Risk Copilot…`
+          : `${coverage ? `${coverage} ` : ""}${harm}`
       );
       setUrl("");
       setBranch("");
@@ -108,7 +141,10 @@ export function DashboardGithubScan() {
         <CardDescription>
           Paste a link or <code className="text-zinc-500">owner/repo</code> for any public repository (yours or someone
           else’s). Private repos only work if your Settings token can read them. No GitHub account linking required for
-          public URLs.
+          public URLs. The scan walks the repository tree (skipping dependency/build folders like{" "}
+          <code className="text-zinc-500">node_modules</code>, <code className="text-zinc-500">.next</code>,{" "}
+          <code className="text-zinc-500">dist</code>) and runs static checks on source files; results summarize severity
+          and where signals cluster by directory.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
